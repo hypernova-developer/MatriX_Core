@@ -1,4 +1,4 @@
-name: Matrix-Core Infinite Runner
+name: Matrix-Core Infinite Runner (Python)
 
 on:
   schedule:
@@ -12,13 +12,18 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
       - name: Install Stockfish
         run: sudo apt-get update && sudo apt-get install -y stockfish
 
-      - name: Compile Matrix-Core
-        run: g++ main.cpp -o MatrixCore
+      - name: Install Python Dependencies
+        run: pip install python-chess requests
 
-      - name: Execute Matrix-Core
+      - name: Execute Matrix-Core (Python)
         env:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
-        run: ./MatrixCore
+        run: python app.py
