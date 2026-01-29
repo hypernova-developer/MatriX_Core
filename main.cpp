@@ -9,20 +9,13 @@
 std::string GLOBAL_TOKEN;
 
 std::string get_best_move(std::string moves) {
-    // Write UCI commands to a temporary file for Stockfish to read reliably
     std::ofstream engine_input("engine_in.txt");
-    engine_input << "uci\n";
-    engine_input << "isready\n";
-    engine_input << "position startpos moves " << moves << "\n";
-    engine_input << "go movetime 2000\n";
-    engine_input << "quit\n";
+    engine_input << "uci\n" << "isready\n" << "position startpos moves " << moves << "\n" << "go movetime 1500\n" << "quit\n";
     engine_input.close();
 
-    std::string command = "stockfish < engine_in.txt";
     std::array<char, 512> buffer;
     std::string result = "";
-    
-    FILE* pipe = popen(command.c_str(), "r");
+    FILE* pipe = popen("stockfish < engine_in.txt", "r");
     if (!pipe) return "error";
     
     while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
@@ -37,63 +30,61 @@ std::string get_best_move(std::string moves) {
     return result;
 }
 
-void make_move(std::string game_id, std::string moves) {
-    // Check if it's actually our turn (Simulated: Lichess handles this, but we log it)
-    std::string best = get_best_move(moves);
-    
-    if (!best.empty() && best != "error" && best.find("(") == std::string::npos) {
-        std::cout << "[GAME] ID: " << game_id << " | Calculated Move: " << best << std::endl;
-        std::string move_cmd = "curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + 
-                               "\" https://lichess.org/api/bot/game/" + game_id + "/move/" + best;
-        
-        // Execute move and capture response to keep connection alive
-        FILE* curl_pipe = popen(move_cmd.c_str(), "r");
-        char response[1024];
-        if (fgets(response, sizeof(response), curl_pipe)) {
-            std::cout << "[LICHESS] Response: " << response << std::endl;
-        }
-        pclose(curl_pipe);
-    }
-}
-
 int main() {
     const char* t = std::getenv("LICHESS_TOKEN");
     if (!t) return 1;
     GLOBAL_TOKEN = std::string(t);
-    
-    std::cout << "Matrix-Core v1.9: Unstoppable Mode" << std::endl;
+    std::cout << "Matrix-Core v2.0: Grandmaster Evolution" << std::endl;
 
     while (true) {
-        std::string stream_cmd = "curl -s -N -L -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/stream/event";
+        std::string stream_cmd = "curl -s -N -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/stream/event";
         FILE* pipe = popen(stream_cmd.c_str(), "r");
         if (!pipe) continue;
 
-        char buffer[4096];
+        char buffer[16384]; // Buffer expanded for long move strings
         while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
             std::string event(buffer);
-            
-            if (event.find("\"type\":\"challenge\"") != std::string::npos) {
-                size_t id_s = event.find("\"id\":\"") + 6;
-                std::string c_id = event.substr(id_s, 8);
-                std::string accept_cmd = "curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/challenge/" + c_id + "/accept";
-                std::system(accept_cmd.c_str());
-                std::cout << "[EVENT] Challenge Accepted: " << c_id << std::endl;
-            } 
-            else if (event.find("\"moves\"") != std::string::npos) {
-                size_t g_pos = event.find("\"id\":\"");
-                if (g_pos == std::string::npos) g_pos = event.find("\"gameId\":\"");
-                size_t start = (event.find("gameId") != std::string::npos) ? g_pos + 10 : g_pos + 6;
-                std::string g_id = event.substr(start, 8);
+            if (event.length() < 5) continue;
 
-                if (g_id.find("muham") == std::string::npos) {
-                    size_t m_s = event.find("\"moves\":\"") + 9;
-                    std::string moves = event.substr(m_s, event.find("\"", m_s) - m_s);
-                    make_move(g_id, moves);
+            // 1. CHALLENGE HANDLER
+            if (event.find("\"type\":\"challenge\"") != std::string::npos) {
+                size_t id_pos = event.find("\"id\":\"") + 6;
+                std::string c_id = event.substr(id_pos, 8);
+                std::system(("curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/challenge/" + c_id + "/accept").c_str());
+                std::cout << "[SYSTEM] Accepted: " << c_id << std::endl;
+            }
+
+            // 2. MOVE HANDLER (Refined)
+            size_t move_idx = event.find("\"moves\":\"");
+            if (move_idx != std::string::npos) {
+                // Find Game ID in the same or previous block
+                size_t g_id_pos = event.find("\"id\":\"");
+                if (g_id_pos == std::string::npos) g_id_pos = event.find("\"gameId\":\"");
+                
+                if (g_id_pos != std::string::npos) {
+                    // Extract ID safely
+                    std::string g_id = "";
+                    for(int i=0; i<20; i++) { // Look ahead for the 8-char ID
+                        std::string sub = event.substr(g_id_pos + i, 8);
+                        if(sub.find("\"") == std::string::npos && sub.find(":") == std::string::npos) {
+                            g_id = sub;
+                            break;
+                        }
+                    }
+
+                    if (!g_id.empty() && g_id.find("muham") == std::string::npos) {
+                        std::string moves_str = event.substr(move_idx + 9, event.find("\"", move_idx + 9) - (move_idx + 9));
+                        std::string best = get_best_move(moves_str);
+                        
+                        if (best.length() >= 4 && best.find("error") == std::string::npos) {
+                            std::cout << "[BATTLE] Playing " << best << " in " << g_id << std::endl;
+                            std::system(("curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/bot/game/" + g_id + "/move/" + best).c_str());
+                        }
+                    }
                 }
             }
         }
         pclose(pipe);
-        std::cout << "[SYSTEM] Reconnecting stream..." << std::endl;
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     return 0;
