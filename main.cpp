@@ -3,21 +3,23 @@
 #include <cstdio>
 #include <memory>
 #include <array>
-#include <vector>
+#include <thread>
+#include <chrono>
 
 std::string GLOBAL_TOKEN;
 
 std::string get_best_move(std::string moves) {
-    // Explicit UCI handshake for stability
-    std::string command = "echo \"uci\nposition startpos moves " + moves + "\ngo movetime 1000\nquit\" | stockfish";
+    // We added more thinking time and explicit UCI protocol
+    std::string command = "echo \"uci\nposition startpos moves " + moves + "\ngo movetime 2000\nquit\" | stockfish";
     std::array<char, 512> buffer;
     std::string result = "";
     
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe) return "error";
     
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-        std::string line = buffer.data();
+    char line_buf[512];
+    while (fgets(line_buf, sizeof(line_buf), pipe) != nullptr) {
+        std::string line(line_buf);
         size_t bestmove_pos = line.find("bestmove ");
         if (bestmove_pos != std::string::npos) {
             result = line.substr(bestmove_pos + 9, 4);
@@ -29,12 +31,11 @@ std::string get_best_move(std::string moves) {
 }
 
 void make_move(std::string game_id, std::string moves) {
-    // BLOCK the "muhammed" fake ID
     if (game_id.find("muham") != std::string::npos) return;
 
     std::string best = get_best_move(moves);
-    if (best != "error" && best.length() >= 4 && best != " (no") {
-        std::cout << "[ACTION] Valid Game ID: " << game_id << " | Move: " << best << std::endl;
+    if (best != "" && best != "error" && best.length() >= 4 && best.find("(") == std::string::npos) {
+        std::cout << "[ACTION] Playing " << best << " for Game: " << game_id << std::endl;
         std::string move_cmd = "curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + 
                                "\" https://lichess.org/api/bot/game/" + game_id + "/move/" + best;
         std::system(move_cmd.c_str());
@@ -46,46 +47,48 @@ int main() {
     if (!t) return 1;
     GLOBAL_TOKEN = std::string(t);
     
-    std::cout << "Matrix-Core v1.7: The Purifier Online" << std::endl;
+    std::cout << "Matrix-Core v1.8: Final Boss Mode Online" << std::endl;
 
     std::string stream_cmd = "curl -s -N -L -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/stream/event";
-    FILE* pipe = popen(stream_cmd.c_str(), "r");
     
-    char buffer[8192];
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        std::string event(buffer);
-        if (event.length() < 10) continue;
-
-        // 1. Challenge Acceptance
-        if (event.find("\"type\":\"challenge\"") != std::string::npos) {
-            size_t id_s = event.find("\"id\":\"") + 6;
-            std::string c_id = event.substr(id_s, 8);
-            std::system(("curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/challenge/" + c_id + "/accept").c_str());
-            std::cout << "[EVENT] Accepted Challenge ID: " << c_id << std::endl;
+    // Outer loop to keep the bot alive even if connection drops
+    while (true) {
+        FILE* pipe = popen(stream_cmd.c_str(), "r");
+        if (!pipe) {
+            std::this_thread::sleep_for(std::chrono::seconds(5));
             continue;
         }
 
-        // 2. Focused Game ID Extraction
-        // Look for gameId field which is much more reliable than generic id
-        size_t g_id_pos = event.find("\"gameId\":\"");
-        if (g_id_pos == std::string::npos) g_id_pos = event.find("\"id\":\"");
+        char buffer[8192];
+        while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+            std::string event(buffer);
+            if (event.length() < 5) continue;
 
-        if (g_id_pos != std::string::npos) {
-            size_t start = (event.find("gameId") != std::string::npos) ? g_id_pos + 10 : g_id_pos + 6;
-            std::string potential_id = event.substr(start, 8);
+            if (event.find("\"type\":\"challenge\"") != std::string::npos) {
+                size_t id_s = event.find("\"id\":\"") + 6;
+                std::string c_id = event.substr(id_s, 8);
+                std::system(("curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/challenge/" + c_id + "/accept").c_str());
+            } 
+            else if (event.find("\"gameId\":\"") != std::string::npos || event.find("\"id\":\"") != std::string::npos) {
+                size_t g_pos = event.find("\"gameId\":\"");
+                if (g_pos == std::string::npos) g_pos = event.find("\"id\":\"");
+                size_t start = (event.find("gameId") != std::string::npos) ? g_pos + 10 : g_pos + 6;
+                std::string g_id = event.substr(start, 8);
 
-            // Double check: Game IDs never contain "muham"
-            if (potential_id.find("muham") == std::string::npos) {
-                size_t m_s = event.find("\"moves\":\"");
-                std::string moves = "";
-                if (m_s != std::string::npos) {
-                    m_s += 9;
-                    moves = event.substr(m_s, event.find("\"", m_s) - m_s);
+                if (g_id.find("muham") == std::string::npos) {
+                    size_t m_s = event.find("\"moves\":\"");
+                    std::string moves = "";
+                    if (m_s != std::string::npos) {
+                        m_s += 9;
+                        moves = event.substr(m_s, event.find("\"", m_s) - m_s);
+                    }
+                    make_move(g_id, moves);
                 }
-                make_move(potential_id, moves);
             }
         }
+        pclose(pipe);
+        std::cout << "[RECONNECTING] Stream lost, reconnecting in 2 seconds..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(2));
     }
-    pclose(pipe);
     return 0;
 }
