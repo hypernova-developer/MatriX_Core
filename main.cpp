@@ -1,38 +1,47 @@
 #include <iostream>
 #include <string>
-#include <vector>
 #include <cstdio>
 #include <memory>
-#include <stdexcept>
 #include <array>
+#include <vector>
 
-std::string ask_stockfish(std::string fen) {
-    std::string command = "stockfish <<EOF\nposition fen " + fen + "\ngo movetime 1000\nquit\nEOF";
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
-    
-    if (!pipe) throw std::runtime_error("Engine failure.");
-    
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
-        std::string line = buffer.data();
-        if (line.find("bestmove") != std::string::npos) {
-            return line.substr(9, 4);
-        }
-    }
-    return "error";
+void execute_command(const std::string& cmd) {
+    std::system(cmd.c_str());
 }
 
 int main() {
-    const char* token = std::getenv("LICHESS_TOKEN");
-    if (!token) return 1;
+    const char* token_ptr = std::getenv("LICHESS_TOKEN");
+    if (!token_ptr) return 1;
+    std::string token = std::string(token_ptr);
 
-    std::cout << "Matrix-Core Engine Status: Online" << std::endl;
+    std::cout << "Matrix-Core Battle Protocol: Initialized" << std::endl;
+
+    // Listen for events (Challenges, Game Starts etc.)
+    std::string stream_cmd = "curl -s -H \"Authorization: Bearer " + token + "\" https://lichess.org/api/stream/event";
     
-    std::string start_pos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-    std::string move = ask_stockfish(start_pos);
-    
-    std::cout << "Engine Analysis: " << move << std::endl;
-    
+    FILE* pipe = popen(stream_cmd.c_str(), "r");
+    if (!pipe) return 1;
+
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+        std::string event(buffer);
+        
+        // Check if it's a challenge
+        if (event.find("\"type\":\"challenge\"") != std::string::npos) {
+            size_t id_pos = event.find("\"id\":\"");
+            if (id_pos != std::string::npos) {
+                std::string challenge_id = event.substr(id_pos + 6, 8); // Extracting 8-char ID
+                std::cout << "Challenge detected! ID: " << challenge_id << std::endl;
+                
+                // Accept the challenge
+                std::string accept_cmd = "curl -s -X POST -H \"Authorization: Bearer " + token + 
+                                       "\" https://lichess.org/api/challenge/" + challenge_id + "/accept";
+                execute_command(accept_cmd);
+                std::cout << "Challenge accepted." << std::endl;
+            }
+        }
+    }
+
+    pclose(pipe);
     return 0;
 }
