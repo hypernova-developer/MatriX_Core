@@ -1,28 +1,38 @@
 #include <iostream>
-#include <cstdlib>
 #include <string>
+#include <vector>
+#include <cstdio>
+#include <memory>
+#include <stdexcept>
+#include <array>
+
+std::string ask_stockfish(std::string fen) {
+    std::string command = "stockfish <<EOF\nposition fen " + fen + "\ngo movetime 1000\nquit\nEOF";
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
+    
+    if (!pipe) throw std::runtime_error("Engine failure.");
+    
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        std::string line = buffer.data();
+        if (line.find("bestmove") != std::string::npos) {
+            return line.substr(9, 4);
+        }
+    }
+    return "error";
+}
 
 int main() {
     const char* token = std::getenv("LICHESS_TOKEN");
+    if (!token) return 1;
 
-    if (token == nullptr) {
-        std::cerr << "CRITICAL ERROR: LICHESS_TOKEN not found in environment!" << std::endl;
-        return 1;
-    }
-
-    std::cout << "--- Matrix-Core v1.0 ---" << std::endl;
-    std::cout << "License: GNU GPL v3.0" << std::endl;
-    std::cout << "Status: Online and ready for challenges." << std::endl;
-
-    std::string command = "curl -s -H \"Authorization: Bearer " + std::string(token) + "\" https://lichess.org/api/account";
+    std::cout << "Matrix-Core Engine Status: Online" << std::endl;
     
-    int result = std::system(command.c_str());
-
-    if (result == 0) {
-        std::cout << "\nConnection Successful!" << std::endl;
-    } else {
-        std::cout << "\nConnection Failed!" << std::endl;
-    }
-
+    std::string start_pos = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+    std::string move = ask_stockfish(start_pos);
+    
+    std::cout << "Engine Analysis: " << move << std::endl;
+    
     return 0;
 }
