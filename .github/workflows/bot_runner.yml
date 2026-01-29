@@ -1,0 +1,21 @@
+name: Matrix-Core Infinite Runner
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Her 6 saatte bir botu otomatik uyandırır
+  workflow_dispatch: # Senin manuel olarak başlatmanı sağlar
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Compile Matrix-Core
+        run: g++ main.cpp -o MatrixCore
+
+      - name: Execute Matrix-Core
+        env:
+          LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
+        run: ./MatrixCore
