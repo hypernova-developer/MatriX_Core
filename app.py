@@ -7,7 +7,6 @@ import chess.engine
 # Config
 TOKEN = os.getenv("LICHESS_TOKEN")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-AUTHORIZED_USER = "muhammedeymengurbuz" # Security Lock
 
 def send_chat(game_id, message):
     """Sends a chat message to the game room."""
@@ -27,8 +26,8 @@ def get_best_move(moves_str):
             for move in moves_str.split():
                 board.push_uci(move)
         
-        # 1.2 seconds of calculation time
-        result = engine.play(board, chess.engine.Limit(time=1.2))
+        # 1.5 seconds of calculation for higher quality moves
+        result = engine.play(board, chess.engine.Limit(time=1.5))
         engine.quit()
         return result.move.uci()
     except Exception as e:
@@ -37,7 +36,7 @@ def get_best_move(moves_str):
 
 def handle_game(game_id):
     """Handles the live game stream and move execution."""
-    print(f"[SYSTEM] Managing Game: {game_id}")
+    print(f"[SYSTEM] Starting Battle: {game_id}")
     url = f"https://lichess.org/api/bot/game/stream/{game_id}"
     welcome_sent = False
 
@@ -47,34 +46,34 @@ def handle_game(game_id):
                 try:
                     data = json.loads(line.decode('utf-8'))
                     
-                    # 1. Greeting Sequence
+                    # 1. Dynamic Greeting Sequence
                     if data.get("type") == "gameFull" and not welcome_sent:
-                        send_chat(game_id, f"Hello {AUTHORIZED_USER}! Matrix-Core v2.4 Dev Mode is active. Good luck!")
+                        white_name = data["white"].get("name", "Player")
+                        black_name = data["black"].get("name", "Player")
+                        # Greetings to the human opponent
+                        send_chat(game_id, f"Hello! I am Matrix-Core v3.0. Good luck to everyone!")
                         welcome_sent = True
 
-                    # 2. Game State & Move Management
+                    # 2. Game State Management
                     state = data.get("state", data)
                     moves = state.get("moves", "")
                     
-                    # Check for game end
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        send_chat(game_id, "Good game! Session terminated.")
-                        print(f"[SYSTEM] Game {game_id} finished. Status: {state.get('status')}")
+                        send_chat(game_id, "Good game! Thanks for the match.")
+                        print(f"[SYSTEM] Game Over: {game_id}")
                         break
 
-                    # 3. Process Engine Move
+                    # 3. Process Move
                     best_move = get_best_move(moves)
                     if best_move:
                         move_url = f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}"
-                        move_res = requests.post(move_url, headers=HEADERS)
-                        if move_res.status_code == 200:
-                            print(f"[MOVE] {best_move} sent successfully.")
-                except Exception as e:
+                        requests.post(move_url, headers=HEADERS)
+                except Exception:
                     continue
 
 def main():
-    print(f"--- Matrix-Core v2.4 Online ---")
-    print(f"[INFO] Security Mode: Only accepting challenges from '{AUTHORIZED_USER}'")
+    print("--- Matrix-Core v3.0: GLOBAL RELEASE ONLINE ---")
+    print("[STATUS] Listening for challenges from all users...")
     
     event_url = "https://lichess.org/api/stream/event"
     
@@ -84,23 +83,19 @@ def main():
                 try:
                     event = json.loads(line.decode('utf-8'))
                     
-                    # Challenge Management
+                    # Challenge Acceptance (Unlocked)
                     if event.get("type") == "challenge":
-                        challenger = event["challenge"]["challenger"]["id"]
                         challenge_id = event["challenge"]["id"]
+                        challenger_name = event["challenge"]["challenger"]["name"]
                         
-                        if challenger.lower() == AUTHORIZED_USER.lower():
-                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=HEADERS)
-                            print(f"[AUTH] Challenge ACCEPTED from: {challenger}")
-                        else:
-                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=HEADERS)
-                            print(f"[SECURITY] Challenge DECLINED from unauthorized user: {challenger}")
+                        # Accept all challenges automatically
+                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=HEADERS)
+                        print(f"[EVENT] Accepted challenge from: {challenger_name}")
                     
-                    # Game Initialization
                     elif event.get("type") == "gameStart":
                         game_id = event["game"]["id"]
                         handle_game(game_id)
-                except Exception as e:
+                except Exception:
                     continue
 
 if __name__ == "__main__":
