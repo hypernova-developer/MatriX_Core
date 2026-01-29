@@ -2,8 +2,8 @@ name: Matrix-Core Infinite Runner
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Her 6 saatte bir botu otomatik uyandırır
-  workflow_dispatch: # Senin manuel olarak başlatmanı sağlar
+    - cron: '0 */6 * * *' 
+  workflow_dispatch: 
 
 jobs:
   run-bot:
@@ -11,6 +11,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Install Stockfish
+        run: sudo apt-get update && sudo apt-get install -y stockfish
 
       - name: Compile Matrix-Core
         run: g++ main.cpp -o MatrixCore
