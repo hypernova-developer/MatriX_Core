@@ -3,20 +3,21 @@ import requests
 import json
 import chess
 import chess.engine
+import time
 from groq import Groq
 
 TOKEN = os.getenv("LICHESS_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-MY_USERNAME = "Muhammedeymengurbuz"
+MY_USERNAME = "MatriX_Core" # Kendi kullanıcı adın
 
 client = Groq(api_key=GROQ_API_KEY)
 
 def get_llama_response(message, context="chat"):
     try:
         prompts = {
-            "welcome": f"You are Matrix-Core. Say hello to your creator {MY_USERNAME} and wish him luck.",
-            "chat": f"You are Matrix-Core. Respond to {MY_USERNAME}'s message briefly and professionally.",
+            "welcome": f"You are Matrix-Core. Say hello to {MY_USERNAME} and wish him luck.",
+            "chat": f"You are Matrix-Core. Respond to {MY_USERNAME}'s message briefly.",
             "win": f"The game ended and you won. Congratulate {MY_USERNAME} humbly.",
             "loss": f"The game ended and you lost. Congratulate {MY_USERNAME} on his victory."
         }
@@ -53,10 +54,10 @@ def get_best_move(moves_str):
 def handle_game(game_id):
     url = f"https://lichess.org/api/bot/game/stream/{game_id}"
     welcome_sent = False
-    with requests.get(url, headers=HEADERS, stream=True) as response:
-        for line in response.iter_lines():
-            if line:
-                try:
+    try:
+        with requests.get(url, headers=HEADERS, stream=True, timeout=20) as response:
+            for line in response.iter_lines():
+                if line:
                     data = json.loads(line.decode('utf-8'))
                     if data.get("type") == "gameFull" and not welcome_sent:
                         send_chat(game_id, get_llama_response("Start", context="welcome"))
@@ -71,26 +72,33 @@ def handle_game(game_id):
                     best_move = get_best_move(state.get("moves", ""))
                     if best_move:
                         requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}", headers=HEADERS)
-                except:
-                    continue
+    except Exception:
+        pass
 
 def main():
     event_url = "https://lichess.org/api/stream/event"
-    with requests.get(event_url, headers=HEADERS, stream=True) as response:
-        for line in response.iter_lines():
-            if line:
-                try:
-                    event = json.loads(line.decode('utf-8'))
-                    if event.get("type") == "challenge":
-                        challenge_id = event["challenge"]["id"]
-                        if event["challenge"]["challenger"]["name"] == MY_USERNAME:
-                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=HEADERS)
-                        else:
-                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=HEADERS)
-                    elif event.get("type") == "gameStart":
-                        handle_game(event["game"]["id"])
-                except:
-                    continue
+    print("[SYSTEM] MatriX_Core is searching for its creator...")
+    while True:
+        try:
+            with requests.get(event_url, headers=HEADERS, stream=True, timeout=15) as response:
+                if response.status_code == 401:
+                    print("[ERROR] Token invalid. Check LICHESS_TOKEN.")
+                    break
+                for line in response.iter_lines():
+                    if line:
+                        event = json.loads(line.decode('utf-8'))
+                        if event.get("type") == "challenge":
+                            c_id = event["challenge"]["id"]
+                            c_name = event["challenge"]["challenger"]["name"]
+                            if c_name == MY_USERNAME:
+                                requests.post(f"https://lichess.org/api/challenge/{c_id}/accept", headers=HEADERS)
+                            else:
+                                requests.post(f"https://lichess.org/api/challenge/{c_id}/decline", headers=HEADERS)
+                        elif event.get("type") == "gameStart":
+                            handle_game(event["game"]["id"])
+        except (requests.exceptions.RequestException, Exception) as e:
+            print(f"[RETRY] Connection reset or error: {e}. Reconnecting in 5s...")
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
