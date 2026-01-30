@@ -9,7 +9,7 @@ from groq import Groq
 TOKEN = os.getenv("LICHESS_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
-MY_USERNAME = "MatriX_Core" # Kendi kullanıcı adın
+MY_USERNAME = "Muhammedeymengurbuz"
 
 client = Groq(api_key=GROQ_API_KEY)
 
