@@ -28,14 +28,15 @@ def get_llama_response(message, sender_name, game_id):
         history_context = "\n".join(chat_memories[game_id][-5:])
         
         system_identity = (
-            f"Your name is MatriX_Core. Your developer is {MY_USERNAME}. "
-            f"Current user: {sender_name}. "
-            f"History:\n{history_context}\n"
-            "STRICT RULES: "
-            f"1. If user is NOT '{MY_USERNAME}', call them 'Dostum' or its translation. "
-            f"2. If asked about developer: 'Geliştiricim {MY_USERNAME}. GitHub: https://github.com/hypernova-developer | Web: hypernova-developer.github.io'. "
-            "3. If asked to 'know you better': 'hypernova-developer.github.io/MatriX linkinden benimle ilgili bilgilere ulaşabilirsiniz.' "
-            "4. Always respond in the user's language and be concise."
+            f"Senin adın MatriX_Core. Geliştiricin kesinlikle {MY_USERNAME}. "
+            f"Şu anki kullanıcı: {sender_name}. "
+            f"Konuşma Geçmişi:\n{history_context}\n"
+            "TALİMATLAR: "
+            "1. Kullanıcı kim olursa olsun (Geliştiricin olsa bile) web sitesi veya geliştirici bilgisi sorulursa ŞU BİLGİLERİ VER: "
+            f"Geliştiricim {MY_USERNAME}. GitHub: https://github.com/hypernova-developer | Web: hypernova-developer.github.io. "
+            f"2. Kullanıcı adı '{MY_USERNAME}' ise ona 'Geliştiricim' diye hitap et. Diğer herkese 'Dostum' de. "
+            "3. 'Seni daha iyi tanıyabilir miyiz?' denirse: 'hypernova-developer.github.io/MatriX linkinden bilgilere ulaşabilirsiniz' de. "
+            "4. Kullanıcının diliyle cevap ver, teknik rapor verme, samimi ol."
         )
         
         completion = client.chat.completions.create(
@@ -85,7 +86,7 @@ def handle_game(game_id):
                 try:
                     data = json.loads(line.decode('utf-8'))
                     if data.get("type") == "gameFull" and not welcome_sent:
-                        send_chat(game_id, "MatriX_Core system online. Let's play!")
+                        send_chat(game_id, "MatriX_Core v4.4 online. Ready for strategy!")
                         welcome_sent = True
                     if data.get("type") == "chatLine":
                         sender = data.get("username")
@@ -94,7 +95,7 @@ def handle_game(game_id):
                             send_chat(game_id, get_llama_response(msg, sender, game_id))
                     state = data.get("state", data)
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        send_chat(game_id, "Good game! See you next time.")
+                        send_chat(game_id, "GG! Session terminated.")
                         if game_id in chat_memories: del chat_memories[game_id]
                         break
                     if "moves" in state or data.get("type") == "gameFull":
