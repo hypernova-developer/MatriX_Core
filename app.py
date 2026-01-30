@@ -3,39 +3,61 @@ import requests
 import json
 import chess
 import chess.engine
+from groq import Groq
 
 # Config
 TOKEN = os.getenv("LICHESS_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
 
+# Llama 3 Client
+client = Groq(api_key=GROQ_API_KEY)
+
+def get_llama_response(message, context="chat"):
+    """Llama 3.3 centilmen zekası."""
+    try:
+        prompts = {
+            "welcome": "You are Matrix-Core, a polite chess AI. Say hello and wish luck briefly.",
+            "chat": "You are Matrix-Core. Respond to the opponent's message in their language. Be brief and professional.",
+            "win": "The game ended and you won. Congratulate the opponent on their good play humbly.",
+            "loss": "The game ended and you lost. Sincerely congratulate the opponent on their victory."
+        }
+        
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-specdec",
+            messages=[
+                {"role": "system", "content": prompts.get(context, prompts["chat"])},
+                {"role": "user", "content": message}
+            ],
+            temperature=0.7,
+            max_tokens=60
+        )
+        return completion.choices[0].message.content
+    except:
+        return "Good game!" if context != "welcome" else "Hello! Good luck!"
+
 def send_chat(game_id, message):
-    """Sends a chat message to the game room."""
     url = f"https://lichess.org/api/bot/game/{game_id}/chat"
     data = {"room": "player", "text": message}
     try:
         requests.post(url, headers=HEADERS, data=data)
-    except Exception as e:
-        print(f"[ERROR] Failed to send chat: {e}")
+    except:
+        pass
 
 def get_best_move(moves_str):
-    """Calculates the best move using Stockfish engine."""
     try:
         engine = chess.engine.SimpleEngine.popen_uci("stockfish")
         board = chess.Board()
         if moves_str:
             for move in moves_str.split():
                 board.push_uci(move)
-        
-        # 1.5 seconds of calculation for higher quality moves
         result = engine.play(board, chess.engine.Limit(time=1.5))
         engine.quit()
         return result.move.uci()
-    except Exception as e:
-        print(f"[ENGINE ERROR] {e}")
+    except:
         return None
 
 def handle_game(game_id):
-    """Handles the live game stream and move execution."""
     print(f"[SYSTEM] Starting Battle: {game_id}")
     url = f"https://lichess.org/api/bot/game/stream/{game_id}"
     welcome_sent = False
@@ -46,56 +68,50 @@ def handle_game(game_id):
                 try:
                     data = json.loads(line.decode('utf-8'))
                     
-                    # 1. Dynamic Greeting Sequence
+                    # 1. Welcome with Llama 3
                     if data.get("type") == "gameFull" and not welcome_sent:
-                        white_name = data["white"].get("name", "Player")
-                        black_name = data["black"].get("name", "Player")
-                        # Greetings to the human opponent
-                        send_chat(game_id, f"Hello! I am Matrix-Core v3.0. Good luck to everyone!")
+                        msg = get_llama_response("Start of the game", context="welcome")
+                        send_chat(game_id, msg)
                         welcome_sent = True
 
-                    # 2. Game State Management
+                    # 2. Chat Listener (Llama 3 responds to opponent)
+                    if data.get("type") == "chatLine" and data.get("username") != "YOUR_BOT_USERNAME":
+                        if data.get("room") == "player":
+                            response_text = get_llama_response(data.get("text"))
+                            send_chat(game_id, response_text)
+
+                    # 3. Game State & Smart Endings
                     state = data.get("state", data)
                     moves = state.get("moves", "")
                     
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        send_chat(game_id, "Good game! Thanks for the match.")
-                        print(f"[SYSTEM] Game Over: {game_id}")
+                        winner = state.get("winner")
+                        context = "win" if (winner == data.get("color")) else "loss"
+                        final_msg = get_llama_response("Game over", context=context)
+                        send_chat(game_id, final_msg)
                         break
 
-                    # 3. Process Move
+                    # 4. Process Move
                     best_move = get_best_move(moves)
                     if best_move:
                         move_url = f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}"
                         requests.post(move_url, headers=HEADERS)
-                except Exception:
+                except:
                     continue
 
 def main():
-    print("--- Matrix-Core v3.0: GLOBAL RELEASE ONLINE ---")
-    print("[STATUS] Listening for challenges from all users...")
-    
+    print("--- Matrix-Core v3.1: LLAMA 3 GENTLEMAN EDITION ---")
     event_url = "https://lichess.org/api/stream/event"
-    
     with requests.get(event_url, headers=HEADERS, stream=True) as response:
         for line in response.iter_lines():
             if line:
                 try:
                     event = json.loads(line.decode('utf-8'))
-                    
-                    # Challenge Acceptance (Unlocked)
                     if event.get("type") == "challenge":
-                        challenge_id = event["challenge"]["id"]
-                        challenger_name = event["challenge"]["challenger"]["name"]
-                        
-                        # Accept all challenges automatically
-                        requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=HEADERS)
-                        print(f"[EVENT] Accepted challenge from: {challenger_name}")
-                    
+                        requests.post(f"https://lichess.org/api/challenge/{event['challenge']['id']}/accept", headers=HEADERS)
                     elif event.get("type") == "gameStart":
-                        game_id = event["game"]["id"]
-                        handle_game(game_id)
-                except Exception:
+                        handle_game(event["game"]["id"])
+                except:
                     continue
 
 if __name__ == "__main__":
