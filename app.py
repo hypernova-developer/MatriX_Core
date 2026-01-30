@@ -17,16 +17,29 @@ try:
 except:
     client = None
 
-def get_llama_response(message, sender_name):
+# Hafıza için sözlük (Oyun bazlı mesaj geçmişi tutar)
+chat_memories = {}
+
+def get_llama_response(message, sender_name, game_id):
     if not client: return "System online."
     try:
+        if game_id not in chat_memories:
+            chat_memories[game_id] = []
+        
+        # Geçmişi sisteme dahil et (Son 5 mesaj)
+        history_context = "\n".join(chat_memories[game_id][-5:])
+        
         system_identity = (
             f"Your name is MatriX_Core. Your developer is {MY_USERNAME}. "
-            f"User: {sender_name}. "
-            "INSTRUCTIONS: Respond directly in the user's language. "
-            f"If user is {MY_USERNAME}, address him as 'My Developer' in his language. "
-            "Be professional and brief."
+            f"Talking to: {sender_name}. "
+            f"Current Chat History:\n{history_context}\n"
+            "INSTRUCTIONS: "
+            "1. Be a natural conversationalist. Don't repeat 'How can I help you' every time. "
+            f"2. If the user is {MY_USERNAME}, address him as his preferred title (default is My Developer). "
+            "3. Remember what you talked about in this game session. "
+            "4. Respond in the user's language and be brief."
         )
+        
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
@@ -36,7 +49,12 @@ def get_llama_response(message, sender_name):
             temperature=0.8,
             max_tokens=150
         )
-        return completion.choices[0].message.content
+        
+        response = completion.choices[0].message.content
+        # Hafızaya ekle
+        chat_memories[game_id].append(f"User: {message}")
+        chat_memories[game_id].append(f"Bot: {response}")
+        return response
     except:
         return "System online."
 
@@ -70,18 +88,19 @@ def handle_game(game_id):
                 try:
                     data = json.loads(line.decode('utf-8'))
                     if data.get("type") == "gameFull" and not welcome_sent:
-                        send_chat(game_id, "System online. Welcome back, My Developer.")
+                        send_chat(game_id, "System online. MatriX_Core is ready.")
                         welcome_sent = True
                     
                     if data.get("type") == "chatLine":
                         sender = data.get("username")
                         if sender.lower() != BOT_USERNAME.lower():
                             msg = data.get("text")
-                            send_chat(game_id, get_llama_response(msg, sender))
+                            send_chat(game_id, get_llama_response(msg, sender, game_id))
                     
                     state = data.get("state", data)
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        send_chat(game_id, "Good game! See you soon.")
+                        send_chat(game_id, "Good game! Session closing.")
+                        if game_id in chat_memories: del chat_memories[game_id]
                         break
                     
                     if "moves" in state or data.get("type") == "gameFull":
