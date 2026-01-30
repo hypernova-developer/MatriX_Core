@@ -1,8 +1,6 @@
 name: Matrix-Core Infinite Runner (Python)
 
 on:
-  schedule:
-    - cron: '0 */6 * * *' 
   workflow_dispatch: 
 
 concurrency:
@@ -12,7 +10,7 @@ concurrency:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 340
+    timeout-minutes: 340 # 5 saat 40 dakika sonra güvenli kapanış/reboot hazırlığı
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -35,3 +33,4 @@ jobs:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: python app.py
+
