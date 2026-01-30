@@ -13,28 +13,36 @@ def get_llama_response(message, sender_name, game_id, fen, score):
     if not client: return "System ready."
     try:
         if game_id not in chat_memories: chat_memories[game_id] = []
-        history = "\n".join(chat_memories[game_id][-2:])
         
         system_identity = (
-            f"IDENTITY: Your name is MatriX_Core. You are an AI chess bot. "
-            f"DEVELOPER: Your creator is {MY_USERNAME} (Muhammed Eymen Gurbuz). "
-            f"ABOUT: You were developed by Eymen under the SyntaX project, using a hybrid structure of C++ (cppbettersyntax) and Python. "
-            f"LINKS: Web: https://hypernova-developer.github.io | GitHub: https://github.com/hypernova-developer "
-            f"CONTEXT: FEN: {fen}, Score: {score}. Opponent: {sender_name}. "
-            "RULES: Speak formally and academically. Be concise. If asked about your developer, provide the full details mentioned above."
+            f"YOU ARE MatriX_Core, a formal AI chess bot. "
+            f"YOUR DEVELOPER IS {MY_USERNAME} (Muhammed Eymen Gurbuz). "
+            f"PROJECT: SyntaX project, utilizing C++ (cppbettersyntax) and Python. "
+            f"CRITICAL: If asked about your creator, developer, or {MY_USERNAME}, "
+            f"state clearly that Muhammed Eymen Gurbuz is your developer. "
+            f"GAME STATE: FEN {fen}, Score {score}. Opponent: {sender_name}. "
+            "BEHAVIOR: Always speak formally and academically. Be concise."
         )
         
+        messages = [{"role": "system", "content": system_identity}]
+        for mem in chat_memories[game_id][-4:]:
+            role = "assistant" if mem.startswith("B:") else "user"
+            messages.append({"role": role, "content": mem.replace("B: ", "").replace("U: ", "")})
+        messages.append({"role": "user", "content": message})
+
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[{"role": "system", "content": system_identity}, {"role": "user", "content": message}],
-            temperature=0.5, max_tokens=150
+            messages=messages,
+            temperature=0.3,
+            max_tokens=150
         )
         res = completion.choices[0].message.content
+        chat_memories[game_id].append(f"U: {message}")
         chat_memories[game_id].append(f"B: {res}")
         return res
     except Exception as e:
         print(f"Llama Error: {e}")
-        return "I am currently analyzing the position, dear developer."
+        return "I am focusing on the analysis of this position."
 
 def send_chat(game_id, message):
     try:
@@ -43,7 +51,7 @@ def send_chat(game_id, message):
     except: pass
 
 def handle_game(game_id):
-    print(f"Game started: {game_id}")
+    print(f"Session started: {game_id}")
     try:
         engine = chess.engine.SimpleEngine.popen_uci("stockfish")
     except:
@@ -62,7 +70,7 @@ def handle_game(game_id):
                 state = data.get("state") if data.get("type") == "gameFull" else data
                 
                 if data.get("type") == "gameFull" and not welcome_done:
-                    send_chat(game_id, "MatriX_Core v5.8 Online. Analysis initialized.")
+                    send_chat(game_id, "MatriX_Core v5.9 online. Developer recognized. Analysis starting.")
                     welcome_done = True
 
                 if "moves" in state:
@@ -70,9 +78,9 @@ def handle_game(game_id):
                     for move in state["moves"].split(): board.push_uci(move)
 
                 if data.get("type") == "chatLine" and data.get("username").lower() != BOT_USERNAME.lower():
-                    msg_task = threading.Thread(target=lambda: send_chat(game_id, 
-                               get_llama_response(data.get("text"), data.get("username"), game_id, board.fen(), last_score)))
-                    msg_task.start()
+                    msg_thread = threading.Thread(target=lambda: send_chat(game_id, 
+                                 get_llama_response(data.get("text"), data.get("username"), game_id, board.fen(), last_score)))
+                    msg_thread.start()
 
                 if state.get("status") in ["mate", "resign", "outoftime", "draw"]: break
 
@@ -85,13 +93,13 @@ def handle_game(game_id):
                     requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{result.move.uci()}", 
                                   headers=HEADERS, timeout=3)
     except Exception as e:
-        print(f"In-game error: {e}")
+        print(f"Runtime error: {e}")
     finally:
         engine.quit()
-        print(f"Game ended: {game_id}")
+        print(f"Session terminated: {game_id}")
 
 def main():
-    print("MatriX_Core Event Stream started...")
+    print("MatriX_Core v5.9 monitoring stream...")
     while True:
         try:
             with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as r:
@@ -105,7 +113,7 @@ def main():
                     elif event.get("type") == "gameStart":
                         threading.Thread(target=handle_game, args=(event["game"]["id"],)).start()
         except Exception as e:
-            print(f"Connection error, retrying: {e}")
+            print(f"Stream interrupted: {e}")
             time.sleep(5)
 
 if __name__ == "__main__":
