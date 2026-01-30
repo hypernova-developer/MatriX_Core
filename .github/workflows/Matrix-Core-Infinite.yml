@@ -5,10 +5,14 @@ on:
     - cron: '0 */6 * * *' 
   workflow_dispatch: 
 
+concurrency:
+  group: matrix-core-group
+  cancel-in-progress: false
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 340
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -22,7 +26,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y stockfish
-          which stockfish
 
       - name: Install Python Dependencies
         run: pip install python-chess requests groq
