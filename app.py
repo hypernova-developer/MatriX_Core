@@ -8,18 +8,18 @@ from groq import Groq
 TOKEN = os.getenv("LICHESS_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HEADERS = {"Authorization": f"Bearer {TOKEN}"}
+MY_USERNAME = "BURAYA_KENDI_KULLANICI_ADINI_YAZ"
 
 client = Groq(api_key=GROQ_API_KEY)
 
 def get_llama_response(message, context="chat"):
     try:
         prompts = {
-            "welcome": "You are Matrix-Core, a polite chess AI. Say hello and wish luck briefly.",
-            "chat": "You are Matrix-Core. Respond to the opponent's message in their language. Be brief and professional.",
-            "win": "The game ended and you won. Congratulate the opponent on their good play humbly.",
-            "loss": "The game ended and you lost. Sincerely congratulate the opponent on their victory."
+            "welcome": f"You are Matrix-Core. Say hello to your creator {MY_USERNAME} and wish him luck.",
+            "chat": f"You are Matrix-Core. Respond to {MY_USERNAME}'s message briefly and professionally.",
+            "win": f"The game ended and you won. Congratulate {MY_USERNAME} humbly.",
+            "loss": f"The game ended and you lost. Congratulate {MY_USERNAME} on his victory."
         }
-        
         completion = client.chat.completions.create(
             model="llama-3.3-70b-specdec",
             messages=[
@@ -31,15 +31,11 @@ def get_llama_response(message, context="chat"):
         )
         return completion.choices[0].message.content
     except:
-        return "Good game!" if context != "welcome" else "Hello! Good luck!"
+        return "System online."
 
 def send_chat(game_id, message):
     url = f"https://lichess.org/api/bot/game/{game_id}/chat"
-    data = {"room": "player", "text": message}
-    try:
-        requests.post(url, headers=HEADERS, data=data)
-    except:
-        pass
+    requests.post(url, headers=HEADERS, data={"room": "player", "text": message})
 
 def get_best_move(moves_str):
     try:
@@ -48,7 +44,7 @@ def get_best_move(moves_str):
         if moves_str:
             for move in moves_str.split():
                 board.push_uci(move)
-        result = engine.play(board, chess.engine.Limit(time=1.5))
+        result = engine.play(board, chess.engine.Limit(time=1.0))
         engine.quit()
         return result.move.uci()
     except:
@@ -63,25 +59,18 @@ def handle_game(game_id):
                 try:
                     data = json.loads(line.decode('utf-8'))
                     if data.get("type") == "gameFull" and not welcome_sent:
-                        msg = get_llama_response("Start of the game", context="welcome")
-                        send_chat(game_id, msg)
+                        send_chat(game_id, get_llama_response("Start", context="welcome"))
                         welcome_sent = True
-                    if data.get("type") == "chatLine" and data.get("username") != "MatriX_Core":
-                        if data.get("room") == "player":
-                            response_text = get_llama_response(data.get("text"))
-                            send_chat(game_id, response_text)
+                    if data.get("type") == "chatLine" and data.get("username") == MY_USERNAME:
+                        send_chat(game_id, get_llama_response(data.get("text")))
                     state = data.get("state", data)
-                    moves = state.get("moves", "")
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        winner = state.get("winner")
-                        context = "win" if (winner == data.get("color")) else "loss"
-                        final_msg = get_llama_response("Game over", context=context)
-                        send_chat(game_id, final_msg)
+                        context = "win" if (state.get("winner") == data.get("color")) else "loss"
+                        send_chat(game_id, get_llama_response("End", context=context))
                         break
-                    best_move = get_best_move(moves)
+                    best_move = get_best_move(state.get("moves", ""))
                     if best_move:
-                        move_url = f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}"
-                        requests.post(move_url, headers=HEADERS)
+                        requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}", headers=HEADERS)
                 except:
                     continue
 
@@ -93,7 +82,11 @@ def main():
                 try:
                     event = json.loads(line.decode('utf-8'))
                     if event.get("type") == "challenge":
-                        requests.post(f"https://lichess.org/api/challenge/{event['challenge']['id']}/accept", headers=HEADERS)
+                        challenge_id = event["challenge"]["id"]
+                        if event["challenge"]["challenger"]["name"] == MY_USERNAME:
+                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/accept", headers=HEADERS)
+                        else:
+                            requests.post(f"https://lichess.org/api/challenge/{challenge_id}/decline", headers=HEADERS)
                     elif event.get("type") == "gameStart":
                         handle_game(event["game"]["id"])
                 except:
