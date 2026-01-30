@@ -29,7 +29,7 @@ def get_llama_response(message, sender_name, game_id, fen, score):
         res = completion.choices[0].message.content
         chat_memories[game_id].extend([f"U: {message}", f"B: {res}"])
         return res
-    except: return "Analiz devam ediyor."
+    except: return "Analiz süreci devam ediyor."
 
 def send_chat(game_id, message):
     try:
@@ -45,25 +45,40 @@ def handle_game(game_id):
     
     board = chess.Board()
     welcome_sent = False
+    
     try:
         with requests.get(url, headers=HEADERS, stream=True, timeout=60) as r:
             for line in r.iter_lines():
                 if not line: continue
                 data = json.loads(line.decode('utf-8'))
                 state = data.get("state", data)
+                
+                # 1. Hamle Takibi ve Board Güncelleme
                 if "moves" in state:
                     board = chess.Board()
-                    for move in state["moves"].split(): board.push_uci(move)
+                    for move in state["moves"].split():
+                        board.push_uci(move)
+
+                # 2. Hoşgeldin Mesajı
                 if data.get("type") == "gameFull" and not welcome_sent:
-                    send_chat(game_id, "MatriX_Core v5.3 aktif. Sayın Geliştiricim, sistem analize hazır.")
+                    send_chat(game_id, "MatriX_Core v5.4 aktif. Sayın Geliştiricim, sistem analize hazır.")
                     welcome_sent = True
+
+                # 3. Sohbet (Ayrı Thread - Hamleyi Engellemez)
                 if data.get("type") == "chatLine" and data.get("username").lower() != BOT_USERNAME.lower():
                     info = engine.analyse(board, chess.engine.Limit(time=0.1))
                     score = info["score"].white().score(mate_score=10000) / 100.0
                     threading.Thread(target=lambda: send_chat(game_id, get_llama_response(data.get("text"), data.get("username"), game_id, board.fen(), score))).start()
-                if state.get("status") in ["mate", "resign", "outoftime", "draw"]: break
-                if (board.turn == chess.WHITE and data.get("white", {}).get("id") == BOT_USERNAME.lower()) or \
-                   (board.turn == chess.BLACK and data.get("black", {}).get("id") == BOT_USERNAME.lower()):
+
+                # 4. Oyun Bitiş Kontrolü
+                if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
+                    break
+
+                # 5. Hamle Yapma (En Kritik Kısım)
+                is_white = data.get("white", {}).get("id") == BOT_USERNAME.lower() if data.get("white") else False
+                is_black = data.get("black", {}).get("id") == BOT_USERNAME.lower() if data.get("black") else False
+                
+                if (board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and is_black):
                     result = engine.play(board, chess.engine.Limit(time=0.5))
                     requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{result.move.uci()}", headers=HEADERS, timeout=5)
     finally:
@@ -71,8 +86,7 @@ def handle_game(game_id):
 
 def main():
     while True:
-        if time.time() - START_TIME > 20000:
-            break
+        if time.time() - START_TIME > 20000: break
         try:
             with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as r:
                 for line in r.iter_lines():
