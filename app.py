@@ -16,12 +16,15 @@ def get_llama_response(message, sender_name, game_id):
         
         system_identity = (
             f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: SyntaX. "
-            f"If asked about developer, explicitly name {MY_USERNAME}. "
-            f"Opponent: {sender_name}. Speak formal Turkish (Siz/Biz). Be very brief."
+            f"If asked about developer, name {MY_USERNAME}. "
+            f"Opponent: {sender_name}. "
+            f"CRITICAL: Detect the language of the user's message and respond ONLY in that language. "
+            f"Continue using that language for the rest of the conversation. "
+            "BEHAVIOR: Always speak formal, academic, and very brief."
         )
         
         messages = [{"role": "system", "content": system_identity}]
-        for mem in chat_memories[game_id][-2:]:
+        for mem in chat_memories[game_id][-3:]:
             role = "assistant" if mem.startswith("B:") else "user"
             messages.append({"role": role, "content": mem.replace("B: ", "").replace("U: ", "")})
         messages.append({"role": "user", "content": message})
@@ -29,15 +32,15 @@ def get_llama_response(message, sender_name, game_id):
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.3,
-            max_tokens=100
+            temperature=0.4,
+            max_tokens=150
         )
         res = completion.choices[0].message.content
         chat_memories[game_id].append(f"U: {message}")
         chat_memories[game_id].append(f"B: {res}")
         return res
     except:
-        return "Analysis in progress, sir."
+        return "Analysis in progress."
 
 def send_chat(game_id, message):
     try:
@@ -63,7 +66,7 @@ def handle_game(game_id):
                 state = data.get("state") if data.get("type") == "gameFull" else data
                 
                 if data.get("type") == "gameFull" and not welcome_done:
-                    send_chat(game_id, "MatriX_Core v6.0 Ready. How can I help you, developer?")
+                    send_chat(game_id, "MatriX_Core v6.1 initialized. System ready for interaction.")
                     welcome_done = True
 
                 if "moves" in state:
@@ -74,7 +77,9 @@ def handle_game(game_id):
                     t = threading.Thread(target=lambda: send_chat(game_id, get_llama_response(data.get("text"), data.get("username"), game_id)))
                     t.start()
 
-                if state.get("status") in ["mate", "resign", "outoftime", "draw"]: break
+                if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
+                    send_chat(game_id, "The game has concluded. Thank you for the challenge. Matrix-Core out.")
+                    break
 
                 is_white = data.get("white", {}).get("id") == BOT_USERNAME.lower() if data.get("type") == "gameFull" else board.turn == chess.WHITE
                 
