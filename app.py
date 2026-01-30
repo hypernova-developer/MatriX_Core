@@ -8,6 +8,9 @@ MY_USERNAME = "Muhammedeymengurbuz"
 BOT_USERNAME = "MatriX_Core"
 client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 chat_memories = {}
+START_TIME = time.time()
+ACTIVE_GAMES = 0
+REBOOT_THRESHOLD = 19800
 
 def get_llama_response(message, sender_name, game_id):
     if not client: return "System online."
@@ -16,11 +19,9 @@ def get_llama_response(message, sender_name, game_id):
         
         system_identity = (
             f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: SyntaX. "
-            f"If asked about developer, name {MY_USERNAME}. "
-            f"Opponent: {sender_name}. "
-            f"CRITICAL: Detect the language of the user's message and respond ONLY in that language. "
-            f"Continue using that language for the rest of the conversation. "
-            "BEHAVIOR: Always speak formal, academic, and very brief."
+            f"Developer: {MY_USERNAME}. Opponent: {sender_name}. "
+            "CRITICAL: Detect user language and respond ONLY in that language. "
+            "BEHAVIOR: Always speak formally, academically, and very brief."
         )
         
         messages = [{"role": "system", "content": system_identity}]
@@ -32,15 +33,14 @@ def get_llama_response(message, sender_name, game_id):
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
-            temperature=0.4,
+            temperature=0.3,
             max_tokens=150
         )
         res = completion.choices[0].message.content
-        chat_memories[game_id].append(f"U: {message}")
-        chat_memories[game_id].append(f"B: {res}")
+        chat_memories[game_id].extend([f"U: {message}", f"B: {res}"])
         return res
     except:
-        return "Analysis in progress."
+        return "I am currently focused on the match."
 
 def send_chat(game_id, message):
     try:
@@ -49,15 +49,15 @@ def send_chat(game_id, message):
     except: pass
 
 def handle_game(game_id):
+    global ACTIVE_GAMES
+    ACTIVE_GAMES += 1
     try:
-        engine = chess.engine.SimpleEngine.popen_uci("stockfish")
-    except:
-        engine = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
-    
-    board = chess.Board()
-    welcome_done = False
+        try: engine = chess.engine.SimpleEngine.popen_uci("stockfish")
+        except: engine = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
+        
+        board = chess.Board()
+        welcome_done = False
 
-    try:
         url = f"https://lichess.org/api/bot/game/stream/{game_id}"
         with requests.get(url, headers=HEADERS, stream=True, timeout=60) as r:
             for line in r.iter_lines():
@@ -66,7 +66,7 @@ def handle_game(game_id):
                 state = data.get("state") if data.get("type") == "gameFull" else data
                 
                 if data.get("type") == "gameFull" and not welcome_done:
-                    send_chat(game_id, "MatriX_Core v6.1 initialized. System ready for interaction.")
+                    send_chat(game_id, "MatriX_Core v6.3 online. System ready.")
                     welcome_done = True
 
                 if "moves" in state:
@@ -78,7 +78,7 @@ def handle_game(game_id):
                     t.start()
 
                 if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                    send_chat(game_id, "The game has concluded. Thank you for the challenge. Matrix-Core out.")
+                    send_chat(game_id, "The match has concluded. Matrix-Core out.")
                     break
 
                 is_white = data.get("white", {}).get("id") == BOT_USERNAME.lower() if data.get("type") == "gameFull" else board.turn == chess.WHITE
@@ -86,23 +86,33 @@ def handle_game(game_id):
                 if (board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and not is_white):
                     result = engine.play(board, chess.engine.Limit(time=0.1))
                     requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{result.move.uci()}", headers=HEADERS, timeout=2)
-    except: pass
-    finally:
         engine.quit()
+    finally:
+        ACTIVE_GAMES -= 1
 
 def main():
     while True:
+        uptime = time.time() - START_TIME
+        if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0:
+            break
+            
         try:
             with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as r:
                 for line in r.iter_lines():
+                    uptime = time.time() - START_TIME
+                    if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0: break
                     if not line: continue
                     event = json.loads(line.decode('utf-8'))
+                    
                     if event.get("type") == "challenge":
                         c_id = event["challenge"]["id"]
-                        if event["challenge"]["challenger"]["name"].lower() == MY_USERNAME.lower():
+                        if uptime < REBOOT_THRESHOLD:
                             requests.post(f"https://lichess.org/api/challenge/{c_id}/accept", headers=HEADERS, timeout=5)
+                        else:
+                            requests.post(f"https://lichess.org/api/challenge/{c_id}/decline", headers=HEADERS, timeout=5)
                     elif event.get("type") == "gameStart":
                         threading.Thread(target=handle_game, args=(event["game"]["id"],)).start()
+                if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0: break
         except:
             time.sleep(5)
 
