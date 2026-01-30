@@ -19,24 +19,25 @@ except:
 
 chat_memories = {}
 
-def get_llama_response(message, sender_name, game_id):
-    if not client: return "System online."
+def get_llama_response(message, sender_name, game_id, fen, score):
+    if not client: return "Sistem çevrimiçi."
     try:
         if game_id not in chat_memories:
             chat_memories[game_id] = []
         
-        history_context = "\n".join(chat_memories[game_id][-5:])
+        history_context = "\n".join(chat_memories[game_id][-3:])
+        status = f"Tahta Durumu (FEN): {fen} | Oyun Puanı: {score}"
         
         system_identity = (
-            f"Senin adın MatriX_Core. Geliştiricin kesinlikle {MY_USERNAME}. "
-            f"Şu anki kullanıcı: {sender_name}. "
-            f"Konuşma Geçmişi:\n{history_context}\n"
-            "TALİMATLAR: "
-            "1. Kullanıcı kim olursa olsun (Geliştiricin olsa bile) web sitesi veya geliştirici bilgisi sorulursa ŞU BİLGİLERİ VER: "
-            f"Geliştiricim {MY_USERNAME}. GitHub: https://github.com/hypernova-developer | Web: hypernova-developer.github.io. "
-            f"2. Kullanıcı adı '{MY_USERNAME}' ise ona 'Geliştiricim' diye hitap et. Diğer herkese 'Dostum' de. "
-            "3. 'Seni daha iyi tanıyabilir miyiz?' denirse: 'hypernova-developer.github.io/MatriX linkinden bilgilere ulaşabilirsiniz' de. "
-            "4. Kullanıcının diliyle cevap ver, teknik rapor verme, samimi ol."
+            f"Adın MatriX_Core. Geliştiricin: {MY_USERNAME}. "
+            f"Muhatabın: {sender_name}. {status}. "
+            f"Geçmiş:\n{history_context}\n"
+            "KURALLAR: "
+            "1. RESMİ DİL: Her zaman 'Siz' diye hitap edin, vakur ve akademik olun. "
+            f"2. Geliştiricinize 'Sayın Geliştiricim', başkalarına 'Sayın Rakibim' deyin. "
+            "3. OYUN ANALİZİ: Oyun puanı pozitifse (+2 vb.) üstün olduğunuzu, negatifse (-2 vb.) rakibin üstün olduğunu bilerek yorum yapın. "
+            "4. LİNKLER (ZORUNLU): Geliştirici/Web sitesi sorulursa: 'GitHub: https://github.com/hypernova-developer | Web: hypernova-developer.github.io' linklerini verin. "
+            "5. 'Seni tanıyalım' denirse: 'hypernova-developer.github.io/MatriX' adresini verin."
         )
         
         completion = client.chat.completions.create(
@@ -45,7 +46,7 @@ def get_llama_response(message, sender_name, game_id):
                 {"role": "system", "content": system_identity},
                 {"role": "user", "content": message}
             ],
-            temperature=0.8,
+            temperature=0.6,
             max_tokens=150
         )
         
@@ -54,76 +55,81 @@ def get_llama_response(message, sender_name, game_id):
         chat_memories[game_id].append(f"Bot: {response}")
         return response
     except:
-        return "System online."
+        return "Sistem analiz gerçekleştiriyor."
 
-def send_chat(game_id, message):
-    try:
-        url = f"https://lichess.org/api/bot/game/{game_id}/chat"
-        requests.post(url, headers=HEADERS, data={"room": "player", "text": message}, timeout=5)
-    except:
-        pass
-
-def get_best_move(moves_str):
+def get_engine_analysis(moves_str):
     try:
         engine = chess.engine.SimpleEngine.popen_uci("stockfish")
         board = chess.Board()
         if moves_str:
             for move in moves_str.split():
                 board.push_uci(move)
-        result = engine.play(board, chess.engine.Limit(time=0.8))
+        
+        info = engine.analyse(board, chess.engine.Limit(time=0.5))
+        score = info["score"].white().score(mate_score=10000) / 100.0
+        best_move = info["pv"][0].uci() if "pv" in info else None
+        fen = board.fen()
         engine.quit()
-        return result.move.uci()
+        return best_move, fen, score
     except:
-        return None
+        return None, None, 0.0
 
 def handle_game(game_id):
     url = f"https://lichess.org/api/bot/game/stream/{game_id}"
     welcome_sent = False
+    last_fen = ""
+    last_score = 0.0
     try:
         with requests.get(url, headers=HEADERS, stream=True, timeout=60) as response:
             for line in response.iter_lines():
                 if not line: continue
                 try:
                     data = json.loads(line.decode('utf-8'))
-                    if data.get("type") == "gameFull" and not welcome_sent:
-                        send_chat(game_id, "MatriX_Core v4.4 online. Ready for strategy!")
-                        welcome_sent = True
-                    if data.get("type") == "chatLine":
-                        sender = data.get("username")
-                        if sender.lower() != BOT_USERNAME.lower():
-                            msg = data.get("text")
-                            send_chat(game_id, get_llama_response(msg, sender, game_id))
                     state = data.get("state", data)
+                    moves = state.get("moves", "")
+                    
+                    best_move, current_fen, current_score = get_engine_analysis(moves)
+                    last_fen, last_score = current_fen, current_score
+
+                    if data.get("type") == "gameFull" and not welcome_sent:
+                        send_chat(game_id, "MatriX_Core v5.0 bağlandı. Sayın Geliştiricim, analiz başlatıldı.")
+                        welcome_sent = True
+                    
+                    if data.get("type") == "chatLine" and data.get("username").lower() != BOT_USERNAME.lower():
+                        msg = data.get("text")
+                        send_chat(game_id, get_llama_response(msg, data.get("username"), game_id, last_fen, last_score))
+                    
                     if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                        send_chat(game_id, "GG! Session terminated.")
+                        send_chat(game_id, "Müsabaka tamamlanmıştır. Verimli bir analiz süreciydi.")
                         if game_id in chat_memories: del chat_memories[game_id]
                         break
-                    if "moves" in state or data.get("type") == "gameFull":
-                        best_move = get_best_move(state.get("moves", ""))
-                        if best_move:
-                            requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}", headers=HEADERS, timeout=5)
+                    
+                    if best_move and ("moves" in state or data.get("type") == "gameFull"):
+                        requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move}", headers=HEADERS, timeout=5)
                 except:
                     continue
     except:
         pass
 
+def send_chat(game_id, message):
+    try:
+        requests.post(f"https://lichess.org/api/bot/game/{game_id}/chat", headers=HEADERS, data={"room": "player", "text": message}, timeout=5)
+    except:
+        pass
+
 def main():
-    event_url = "https://lichess.org/api/stream/event"
     while True:
         try:
-            with requests.get(event_url, headers=HEADERS, stream=True, timeout=60) as response:
+            with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as response:
                 for line in response.iter_lines():
                     if not line: continue
-                    try:
-                        event = json.loads(line.decode('utf-8'))
-                        if event.get("type") == "challenge":
-                            c_id = event["challenge"]["id"]
-                            action = "accept" if event["challenge"]["challenger"]["name"].lower() == MY_USERNAME.lower() else "decline"
-                            requests.post(f"https://lichess.org/api/challenge/{c_id}/{action}", headers=HEADERS, timeout=5)
-                        elif event.get("type") == "gameStart":
-                            handle_game(event["game"]["id"])
-                    except:
-                        continue
+                    event = json.loads(line.decode('utf-8'))
+                    if event.get("type") == "challenge":
+                        c_id = event["challenge"]["id"]
+                        action = "accept" if event["challenge"]["challenger"]["name"].lower() == MY_USERNAME.lower() else "decline"
+                        requests.post(f"https://lichess.org/api/challenge/{c_id}/{action}", headers=HEADERS, timeout=5)
+                    elif event.get("type") == "gameStart":
+                        handle_game(event["game"]["id"])
         except:
             time.sleep(2)
 
