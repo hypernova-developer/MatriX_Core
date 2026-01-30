@@ -13,16 +13,16 @@ MY_USERNAME = "Muhammedeymengurbuz"
 
 try:
     client = Groq(api_key=GROQ_API_KEY)
-except:
+except Exception as e:
     client = None
 
 def get_llama_response(message, context="chat"):
-    if not GROQ_API_KEY or client is None:
-        return "System online."
+    if not GROQ_API_KEY:
+        return "HATA: GROQ_API_KEY ortam degiskeni bulunamadi!"
     try:
         prompts = {
             "welcome": f"You are Matrix-Core. Say hello to your creator {MY_USERNAME} briefly.",
-            "chat": f"You are Matrix-Core. Respond to {MY_USERNAME}'s message in the language he used. Be brief.",
+            "chat": f"You are Matrix-Core. Respond to {MY_USERNAME}'s message briefly.",
             "win": f"The game ended and you won. Congratulate {MY_USERNAME} humbly.",
             "loss": f"The game ended and you lost. Congratulate {MY_USERNAME} on his victory."
         }
@@ -36,8 +36,8 @@ def get_llama_response(message, context="chat"):
             max_tokens=60
         )
         return completion.choices[0].message.content
-    except:
-        return "System online."
+    except Exception as e:
+        return f"HATA DETAYI: {str(e)[:100]}"
 
 def send_chat(game_id, message):
     url = f"https://lichess.org/api/bot/game/{game_id}/chat"
