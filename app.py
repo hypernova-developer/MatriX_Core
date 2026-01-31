@@ -12,12 +12,14 @@ START_TIME = time.time()
 ACTIVE_GAMES = 0
 REBOOT_THRESHOLD = 19800
 BLACKLIST = ["Scheunentor17"]
+MAX_CONCURRENT_GAMES = 1
+OPENING_BOOK = {"e2e4": "e7e5", "": "e2e4"}
 
 def get_llama_response(message, sender_name, game_id):
     if not client: return "System online."
     try:
         if game_id not in chat_memories: chat_memories[game_id] = []
-        system_identity = (f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: SyntaX. Developer: {MY_USERNAME}. Opponent: {sender_name}. CRITICAL: Detect user language and respond ONLY in that language. BEHAVIOR: Always speak formally, academically, and very brief.")
+        system_identity = (f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: SyntaX. Developer: {MY_USERNAME}. Opponent: {sender_name}. Respond formally and briefly.")
         messages = [{"role": "system", "content": system_identity}]
         for mem in chat_memories[game_id][-3:]:
             role = "assistant" if mem.startswith("B:") else "user"
@@ -35,10 +37,10 @@ def send_chat(game_id, message):
 
 def handle_game(game_id):
     global ACTIVE_GAMES
-    ACTIVE_GAMES += 1
     try:
         try: engine = chess.engine.SimpleEngine.popen_uci("stockfish")
         except: engine = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
+        engine.configure({"Threads": 2, "Hash": 256})
         board = chess.Board()
         welcome_done = False
         url = f"https://lichess.org/api/bot/game/stream/{game_id}"
@@ -48,7 +50,7 @@ def handle_game(game_id):
                 data = json.loads(line.decode('utf-8'))
                 state = data.get("state") if data.get("type") == "gameFull" else data
                 if data.get("type") == "gameFull" and not welcome_done:
-                    send_chat(game_id, "MatriX_Core v6.3 online. System ready.")
+                    send_chat(game_id, "MatriX_Core v6.3: Unnatural Disaster. Mode: Full Power.")
                     welcome_done = True
                 if "moves" in state:
                     board = chess.Board()
@@ -56,13 +58,17 @@ def handle_game(game_id):
                 if data.get("type") == "chatLine" and data.get("username").lower() != BOT_USERNAME.lower():
                     t = threading.Thread(target=lambda: send_chat(game_id, get_llama_response(data.get("text"), data.get("username"), game_id)))
                     t.start()
-                if state.get("status") in ["mate", "resign", "outoftime", "draw"]:
-                    send_chat(game_id, "The match has concluded. Matrix-Core out.")
-                    break
+                if state.get("status") in ["mate", "resign", "outoftime", "draw"]: break
                 is_white = data.get("white", {}).get("id") == BOT_USERNAME.lower() if data.get("type") == "gameFull" else board.turn == chess.WHITE
                 if (board.turn == chess.WHITE and is_white) or (board.turn == chess.BLACK and not is_white):
-                    result = engine.play(board, chess.engine.Limit(time=0.1))
-                    requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{result.move.uci()}", headers=HEADERS, timeout=2)
+                    move_uci = state.get("moves", "").split()
+                    last_moves = " ".join(move_uci)
+                    if len(board.move_stack) < 8 and last_moves in OPENING_BOOK:
+                        best_move = chess.Move.from_uci(OPENING_BOOK[last_moves])
+                    else:
+                        result = engine.play(board, chess.engine.Limit(time=0.1))
+                        best_move = result.move
+                    requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move.uci()}", headers=HEADERS, timeout=2)
         engine.quit()
     finally: ACTIVE_GAMES -= 1
 
@@ -73,38 +79,42 @@ def send_auto_challenge():
             if not bot_line: continue
             bot_data = json.loads(bot_line.decode('utf-8'))
             username = bot_data.get("username")
-            bullet_rating = bot_data.get("perfs", {}).get("bullet", {}).get("rating", 0)
-            if username.lower() != BOT_USERNAME.lower() and username not in BLACKLIST and bullet_rating < 2000:
+            rating = bot_data.get("perfs", {}).get("bullet", {}).get("rating", 0)
+            if username.lower() != BOT_USERNAME.lower() and username not in BLACKLIST and rating < 2200:
                 requests.post(f"https://lichess.org/api/challenge/{username}", headers=HEADERS, data={"time": 1, "increment": 0, "rated": "true", "color": "random"}, timeout=5)
                 break
     except: pass
 
 def main():
+    global ACTIVE_GAMES
     last_challenge_time = 0
     while True:
         uptime = time.time() - START_TIME
         if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0: break
-        if ACTIVE_GAMES == 0 and time.time() - last_challenge_time > 60:
+        if ACTIVE_GAMES < MAX_CONCURRENT_GAMES and time.time() - last_challenge_time > 60:
             threading.Thread(target=send_auto_challenge).start()
             last_challenge_time = time.time()
         try:
             with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as r:
                 for line in r.iter_lines():
                     uptime = time.time() - START_TIME
-                    if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0: break
                     if not line: continue
                     event = json.loads(line.decode('utf-8'))
                     if event.get("type") == "challenge":
                         c_id = event["challenge"]["id"]
-                        challenger = event["challenge"]["challenger"]["id"]
-                        if uptime < REBOOT_THRESHOLD and challenger not in BLACKLIST:
+                        challenger = event["challenge"]["challenger"]
+                        c_username = challenger["id"]
+                        is_bot = event["challenge"]["challenger"].get("title") == "BOT"
+                        c_rating = event["challenge"]["challenger"].get("rating", 0)
+                        allowed = (is_bot and c_rating < 2200) or (not is_bot and c_rating < 2350)
+                        if ACTIVE_GAMES < MAX_CONCURRENT_GAMES and uptime < REBOOT_THRESHOLD and c_username not in BLACKLIST and allowed:
                             requests.post(f"https://lichess.org/api/challenge/{c_id}/accept", headers=HEADERS, timeout=5)
                         else:
                             requests.post(f"https://lichess.org/api/challenge/{c_id}/decline", headers=HEADERS, timeout=5)
-                    elif event.get("type") == "gameStart":
+                    elif event.get("type") == "gameStart" and ACTIVE_GAMES < MAX_CONCURRENT_GAMES:
+                        ACTIVE_GAMES += 1
                         threading.Thread(target=handle_game, args=(event["game"]["id"],)).start()
         except: time.sleep(5)
 
 if __name__ == "__main__":
     main()
-
