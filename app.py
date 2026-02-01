@@ -50,7 +50,7 @@ def handle_game(game_id):
                 data = json.loads(line.decode('utf-8'))
                 state = data.get("state") if data.get("type") == "gameFull" else data
                 if data.get("type") == "gameFull" and not welcome_done:
-                    send_chat(game_id, "MatriX_Core v6.3: Unnatural Disaster. Mode: Full Power.")
+                    send_chat(game_id, "MatriX_Core v6.3: Unnatural Disaster. Mode: Full Power (Safe Mode).")
                     welcome_done = True
                 if "moves" in state:
                     board = chess.Board()
@@ -68,53 +68,59 @@ def handle_game(game_id):
                     else:
                         result = engine.play(board, chess.engine.Limit(time=0.1))
                         best_move = result.move
-                    requests.post(f"https://lichess.org/api/bot/game/{game_id}/move/{best_move.uci()}", headers=HEADERS, timeout=2)
+                    requests.post(f"https://lichess.org/api/challenge/game/{game_id}/move/{best_move.uci()}", headers=HEADERS, timeout=2)
         engine.quit()
     finally: ACTIVE_GAMES -= 1
 
-def send_auto_challenge():
-    try:
-        online_bots = requests.get("https://lichess.org/api/bot/online", timeout=10).iter_lines()
-        for bot_line in online_bots:
-            if not bot_line: continue
-            bot_data = json.loads(bot_line.decode('utf-8'))
-            username = bot_data.get("username")
-            rating = bot_data.get("perfs", {}).get("bullet", {}).get("rating", 0)
-            if username.lower() != BOT_USERNAME.lower() and username not in BLACKLIST and rating < 2200:
-                requests.post(f"https://lichess.org/api/challenge/{username}", headers=HEADERS, data={"time": 1, "increment": 0, "rated": "true", "color": "random"}, timeout=5)
-                break
-    except: pass
-
 def main():
     global ACTIVE_GAMES
-    last_challenge_time = 0
+    # Auto-challenge is disabled for demonstration security.
+    
     while True:
         uptime = time.time() - START_TIME
         if uptime > REBOOT_THRESHOLD and ACTIVE_GAMES == 0: break
-        if ACTIVE_GAMES < MAX_CONCURRENT_GAMES and time.time() - last_challenge_time > 60:
-            threading.Thread(target=send_auto_challenge).start()
-            last_challenge_time = time.time()
+        
         try:
             with requests.get("https://lichess.org/api/stream/event", headers=HEADERS, stream=True, timeout=60) as r:
                 for line in r.iter_lines():
-                    uptime = time.time() - START_TIME
                     if not line: continue
                     event = json.loads(line.decode('utf-8'))
+                    
                     if event.get("type") == "challenge":
                         c_id = event["challenge"]["id"]
                         challenger = event["challenge"]["challenger"]
-                        c_username = challenger["id"]
-                        is_bot = event["challenge"]["challenger"].get("title") == "BOT"
-                        c_rating = event["challenge"]["challenger"].get("rating", 0)
-                        allowed = (is_bot and c_rating < 2200) or (not is_bot and c_rating < 2350)
-                        if ACTIVE_GAMES < MAX_CONCURRENT_GAMES and uptime < REBOOT_THRESHOLD and c_username not in BLACKLIST and allowed:
+                        c_user = challenger["id"]
+                        
+                        # Safety Protocol Checks
+                        is_rated = event["challenge"]["rated"]
+                        speed = event["challenge"]["speed"]
+                        time_limit = event["challenge"]["timeControl"].get("limit", 0) # seconds
+                        
+                        # Filtering criteria:
+                        # 1. Must be Casual (not rated)
+                        # 2. Not a correspondence game
+                        # 3. Maximum time limit: 15 minutes (900 seconds)
+                        # 4. No active games currently running
+                        
+                        can_accept = (not is_rated and 
+                                     speed != "correspondence" and 
+                                     time_limit <= 900 and 
+                                     ACTIVE_GAMES < MAX_CONCURRENT_GAMES and 
+                                     c_user not in BLACKLIST)
+                        
+                        if can_accept:
+                            print(f"ACCEPTING: Casual match from {c_user}")
                             requests.post(f"https://lichess.org/api/challenge/{c_id}/accept", headers=HEADERS, timeout=5)
                         else:
+                            print(f"DECLINING: Rated or Invalid match from {c_user}")
                             requests.post(f"https://lichess.org/api/challenge/{c_id}/decline", headers=HEADERS, timeout=5)
+                            
                     elif event.get("type") == "gameStart" and ACTIVE_GAMES < MAX_CONCURRENT_GAMES:
                         ACTIVE_GAMES += 1
                         threading.Thread(target=handle_game, args=(event["game"]["id"],)).start()
-        except: time.sleep(5)
+        except Exception as e:
+            print(f"Event Stream Error: {e}")
+            time.sleep(5)
 
 if __name__ == "__main__":
     main()
