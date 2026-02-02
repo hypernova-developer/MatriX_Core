@@ -19,7 +19,7 @@ MatriX_Core has demonstrated elite-level proficiency in high-speed environments:
 
 | Category | Rating | Percentile |
 | :--- | :--- | :--- |
-| **Bullet** | 2900+ | 100.0% (Peak) |
+| **Bullet** | 2900+ | 100.0% (Peak, Current) |
 | **Response Time** | < 100ms | Ultra-Fast |
 
 
@@ -36,4 +36,4 @@ MatriX_Core has demonstrated elite-level proficiency in high-speed environments:
 This project is developed for educational and algorithmic research purposes. To comply with Lichess Terms of Service (ToS), this software is intended to be run exclusively on accounts officially registered as "BOT".
 
 ---
-*Developed by the MatriX Engineering Team*
+*Developed by hypernova-developer*
