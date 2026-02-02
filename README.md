@@ -4,7 +4,7 @@
 ![Status](https://img.shields.io/badge/Status-Top%200.1%25-red?style=for-the-badge)
 ![Engine](https://img.shields.io/badge/Engine-Stockfish%2016.1-blue?style=for-the-badge)
 
-**MatriX_Core** is a high-performance chess automation system optimized for the Lichess platform. By utilizing a hybrid architecture of traditional engine depth and advanced move selection algorithms, it has achieved a Bullet rating of **2902**, placing it in the **Top 100.0%** of all players.
+**MatriX_Core** is **"Bigger Brother of MatriX_Neural"** a high-performance chess automation system optimized for the Lichess platform. By utilizing a hybrid architecture of traditional engine depth and advanced move selection algorithms, it has achieved a Bullet rating of **2902**, placing it in the **Top 100.0%** of all players. 
 
 ## 🚀 Key Features
 
