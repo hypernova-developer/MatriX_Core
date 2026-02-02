@@ -1,20 +1,24 @@
 name: Matrix-Core Infinite Runner (Python)
 
 on:
-  workflow_dispatch: # Manuel başlatma
-  workflow_run: # Bu iş bittiğinde tekrar başlasın
+  workflow_dispatch: # Manuel başlatma butonu
+  schedule:
+    - cron: '0 */5 * * *' # Her 5 saatte bir otomatik "tetik" gönder (Yedek plan)
+  workflow_run:
     workflows: ["Matrix-Core Infinite Runner (Python)"]
     types:
       - completed
 
 concurrency:
   group: matrix-core-group
-  cancel-in-progress: false # Devam eden maçı kesmemesi için
+  cancel-in-progress: false
 
 jobs:
   run-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 340 # 5 saat 40 dakika sınır
+    # GitHub'ın 'workflow_run'ı görmesi için bu ismin 
+    # yukarıdaki 'workflows' kısmıyla birebir aynı olması şart.
+    timeout-minutes: 340 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
