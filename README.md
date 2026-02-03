@@ -36,4 +36,4 @@ MatriX_Core has demonstrated elite-level proficiency in high-speed environments:
 This project is developed for educational and algorithmic research purposes. To comply with Lichess Terms of Service (ToS), this software is intended to be run exclusively on accounts officially registered as "BOT".
 
 ---
-*Developed by hypernova-developer*
+*Programmed by hypernova-developer*
