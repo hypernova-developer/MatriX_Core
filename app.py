@@ -11,7 +11,7 @@ chat_memories = {}
 START_TIME = time.time()
 ACTIVE_GAMES = 0
 REBOOT_THRESHOLD = 19800
-BLACKLIST = ["Scheunentor17"]
+BLACKLIST = ["Scheunentor17", "Socratesbot254"]
 MAX_CONCURRENT_GAMES = 1
 OPENING_BOOK = {"e2e4": "e7e5", "": "e2e4"}
 
