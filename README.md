@@ -19,7 +19,7 @@ MatriX_Core has demonstrated elite-level proficiency in high-speed environments:
 
 | Category | Rating | Percentile |
 | :--- | :--- | :--- |
-| **Bullet** | 2900+ | 100.0% (Peak, Current) |
+| **Bullet** | 2900+ | 0.1% (Peak, Current) |
 | **Response Time** | < 100ms | Ultra-Fast |
 
 
