@@ -19,7 +19,7 @@ def get_llama_response(message, sender_name, game_id):
     if not client: return "System online."
     try:
         if game_id not in chat_memories: chat_memories[game_id] = []
-        system_identity = (f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: SyntaX. Developer: {MY_USERNAME}. Opponent: {sender_name}. Respond formally and briefly.")
+        system_identity = (f"Your name: MatriX_Core. Creator: {MY_USERNAME}. Project: MatriX. Developer: {MY_USERNAME}. Opponent: {sender_name}. Respond formally and briefly.")
         messages = [{"role": "system", "content": system_identity}]
         for mem in chat_memories[game_id][-3:]:
             role = "assistant" if mem.startswith("B:") else "user"
