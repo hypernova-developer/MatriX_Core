@@ -9,16 +9,20 @@
 #include <thread>
 
 const std::string STOCKFISH_PATH = "/usr/games/stockfish";
-const std::vector<std::string> WHITELIST = { "muhammedeymengurbuz" };
 const char* rawToken = std::getenv("LICHESS_TOKEN");
 const std::string TOKEN = rawToken ? rawToken : "";
 
-bool isUserAllowed(std::string userId)
+const std::vector<std::string> BLACKLIST = { 
+    "scheunentor17", "socratesbot254", "petersbot", 
+    "pzchessbot", "krausevich", "pat9471" 
+};
+
+bool isBlacklisted(std::string userId)
 {
     std::transform(userId.begin(), userId.end(), userId.begin(), ::tolower);
-    for (const auto& allowed : WHITELIST)
+    for (const auto& banned : BLACKLIST)
     {
-        if (userId == allowed) return true;
+        if (userId == banned) return true;
     }
     return false;
 }
@@ -163,11 +167,18 @@ void streamEvents()
                 size_t nStart = line.find("\"id\":\"", chObj) + 6;
                 std::string challengerId = line.substr(nStart, line.find("\"", nStart) - nStart);
 
-                if (isUserAllowed(challengerId))
+                if (!isBlacklisted(challengerId))
                 {
+                    std::cout << "[ACCEPT] Challenge from: " << challengerId << std::endl << std::flush;
                     std::string acc = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
                     system((acc + " > /dev/null 2>&1").c_str());
                     std::thread(handleGame, c_id).detach();
+                }
+                else
+                {
+                    std::cout << "[SECURITY] Declined (Blacklisted): " << challengerId << std::endl << std::flush;
+                    std::string decline = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
+                    system((decline + " > /dev/null 2>&1").c_str());
                 }
             }
         }
@@ -178,7 +189,7 @@ void streamEvents()
 int main()
 {
     if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v7.17.0 Unnatural Disaster: EXECUTION DEMON" << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v7.17.1 Unnatural Disaster: EXECUTION DEMON" << std::endl << std::flush;
     while (true)
     {
         streamEvents();
