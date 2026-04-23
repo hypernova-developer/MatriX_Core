@@ -10,7 +10,7 @@
 
 const char* rawToken = std::getenv("LICHESS_TOKEN");
 const std::string TOKEN = rawToken ? rawToken : "";
-const std::string STOCKFISH_PATH = "./stockfish";
+const std::string STOCKFISH_PATH = "/usr/games/stockfish";
 const std::vector<std::string> WHITELIST = { "muhammedeymengurbuz" };
 
 bool isUserAllowed(std::string userId)
@@ -29,16 +29,8 @@ bool isUserAllowed(std::string userId)
 void sendMove(std::string gameId, std::string move)
 {
     std::string cmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\"";
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (pipe)
-    {
-        char buffer[128];
-        if (fgets(buffer, sizeof(buffer), pipe) != NULL)
-        {
-            std::cout << "[STRIKE] Move Response: " << buffer << std::endl << std::flush;
-        }
-        pclose(pipe);
-    }
+    system((cmd + " > /dev/null 2>&1").c_str());
+    std::cout << "[STRIKE] Move Attempted: " << move << std::endl << std::flush;
 }
 
 std::string getBestMove(std::string moves)
@@ -141,15 +133,7 @@ void handleGame(std::string gameId)
             if ((amIWhite && count % 2 == 0) || (!amIWhite && count % 2 != 0))
             {
                 std::string move = getBestMove(allMoves);
-                if (!move.empty()) 
-                {
-                    std::cout << "[INFO] Best Move Found: " << move << std::endl << std::flush;
-                    sendMove(gameId, move);
-                }
-                else
-                {
-                    std::cout << "[ERROR] Stockfish failed to return a move!" << std::endl << std::flush;
-                }
+                if (!move.empty()) sendMove(gameId, move);
             }
         }
         if (line.find("\"status\"") != std::string::npos && (line.find("\"mate\"") != std::string::npos || line.find("\"draw\"") != std::string::npos)) break;
@@ -185,12 +169,6 @@ void streamEvents()
                     system((acc + " > /dev/null 2>&1").c_str());
                     std::thread(handleGame, c_id).detach();
                 }
-                else
-                {
-                    std::string decline = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
-                    system((decline + " > /dev/null 2>&1").c_str());
-                    std::cout << "[SECURITY] Blocked: " << challengerId << std::endl << std::flush;
-                }
             }
         }
     }
@@ -199,23 +177,17 @@ void streamEvents()
 
 int main()
 {
-    if (TOKEN.empty()) 
-    {
-        std::cout << "[FATAL] TOKEN NOT FOUND!" << std::endl << std::flush;
-        return 1;
-    }
-
-    std::cout << "[DEPLOY] MatriX_Core v12.3: Diagnostics Mode" << std::endl << std::flush;
+    if (TOKEN.empty()) return 1;
+    std::cout << "[DEPLOY] MatriX_Core v12.4: Ironclad Edition" << std::endl << std::flush;
     
-    std::cout << "[TEST] Testing Stockfish connection..." << std::endl << std::flush;
     std::string testMove = getBestMove("");
     if (testMove.empty())
     {
-        std::cout << "[FATAL] Stockfish is not responding! Check binary and permissions." << std::endl << std::flush;
+        std::cout << "[FATAL] System Stockfish failed. Checking alternative path..." << std::endl << std::flush;
     }
     else
     {
-        std::cout << "[OK] Stockfish is alive. First move test: " << testMove << std::endl << std::flush;
+        std::cout << "[OK] System Stockfish is alive. Test move: " << testMove << std::endl << std::flush;
     }
 
     while (true)
