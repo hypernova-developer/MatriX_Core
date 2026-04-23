@@ -22,7 +22,7 @@ void sendMove(std::string gameId, std::string move)
 
 std::string getBestMove(std::string moves)
 {
-    std::string command = "(echo \"uci\"; echo \"isready\"; echo \"position startpos moves " + moves + "\"; echo \"go movetime 50\"; echo \"quit\") | stockfish 2>/dev/null";
+    std::string command = "(echo \"uci\"; echo \"isready\"; echo \"position startpos moves " + moves + "\"; echo \"go movetime 100\nquit\") | stockfish 2>/dev/null";
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe)
     {
@@ -77,21 +77,26 @@ void handleGame(std::string gameId, bool amIWhite)
             {
                 std::stringstream ss(allMoves);
                 std::string temp;
-                while(ss >> temp) spaces++;
+                while(ss >> temp)
+                {
+                    spaces++;
+                }
             }
             
             bool myTurn = (amIWhite && (spaces % 2 == 0)) || (!amIWhite && (spaces % 2 != 0));
             if (myTurn)
             {
                 std::string move = getBestMove(allMoves);
-                if (!move.empty() && move.length() >= 4)
+                if (!move.empty() && move.length() >= 4 && move != "bestmove")
                 {
                     sendMove(gameId, move);
                 }
             }
         }
         
-        if (line.find("\"status\"") != std::string::npos && line.find("\"started\"") == std::string::npos)
+        if (line.find("\"status\"") != std::string::npos && 
+            line.find("\"started\"") == std::string::npos && 
+            line.find("\"created\"") == std::string::npos)
         {
             break;
         }
@@ -115,7 +120,10 @@ void streamEvents()
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
     {
         std::string line(buffer);
-        if (line.length() < 5) continue;
+        if (line.length() < 5)
+        {
+            continue;
+        }
 
         if (line.find("\"type\":\"challenge\"") != std::string::npos)
         {
@@ -131,13 +139,13 @@ void streamEvents()
         }
         else if (line.find("\"type\":\"gameStart\"") != std::string::npos)
         {
-            size_t gameSection = line.find("\"game\":{");
-            size_t idKey = line.find("\"id\":\"", gameSection) + 6;
-            std::string g_id = line.substr(idKey, line.find("\"", idKey) - idKey);
+            size_t gameObjPos = line.find("\"game\":{");
+            size_t idPos = line.find("\"id\":\"", gameObjPos) + 6;
+            std::string g_id = line.substr(idPos, line.find("\"", idPos) - idPos);
             
             bool white = (line.find("\"color\":\"white\"") != std::string::npos);
             
-            if (currentMatchesCount < 1)
+            if (currentMatchesCount < 1 && g_id != "muhammedeymengurbuz")
             {
                 currentMatchesCount++;
                 std::thread(handleGame, g_id, white).detach();
@@ -149,8 +157,11 @@ void streamEvents()
 
 int main()
 {
-    if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v7.8 Allman-Hard-Logic Online." << std::endl << std::flush;
+    if (TOKEN.empty())
+    {
+        return 1;
+    }
+    std::cout << "[DEPLOY] MatriX_Core v7.9 Online." << std::endl << std::flush;
     while (true)
     {
         streamEvents();
