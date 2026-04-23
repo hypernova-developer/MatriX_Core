@@ -2,12 +2,11 @@
 #include <string>
 #include <vector>
 #include <sstream>
-#include <cstdio>
-#include <cstdlib>
-#include <thread>
+#include <unistd.h>
+#include <sys/wait.h>
 #include <algorithm>
 #include <chrono>
-#include <fstream>
+#include <thread>
 
 const std::string TOKEN = std::getenv("LICHESS_TOKEN") ? std::getenv("LICHESS_TOKEN") : "";
 const std::vector<std::string> WHITELIST = {"muhammedeymengurbuz"};
@@ -25,48 +24,60 @@ bool isUserAllowed(std::string userId)
 
 void sendMove(std::string gameId, std::string move)
 {
-    std::string cmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\"";
-    system((cmd + " > /dev/null 2>&1 &").c_str());
+    std::string cmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\" > /dev/null 2>&1 &";
+    system(cmd.c_str());
     std::cout << "[STRIKE] Matrix Executed: " << move << std::endl << std::flush;
 }
 
 std::string getBestMove(std::string moves)
 {
-    std::ofstream engineInput("input.txt");
-    engineInput << "uci" << std::endl;
-    engineInput << "isready" << std::endl;
-    
-    if (moves.empty()) 
-    {
-        engineInput << "position startpos" << std::endl;
-    }
-    else 
-    {
-        engineInput << "position startpos moves " << moves << std::endl;
-    }
-    
-    engineInput << "go movetime 1000" << std::endl;
-    engineInput << "quit" << std::endl;
-    engineInput.close();
+    int inPipe[2], outPipe[2];
+    if (pipe(inPipe) < 0 || pipe(outPipe) < 0) return "";
 
-    FILE* pipe = popen("stockfish < input.txt 2>/dev/null", "r");
-    if (!pipe) return "";
-
-    char buffer[2048];
-    std::string bestMove = "";
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+    pid_t pid = fork();
+    if (pid == 0)
     {
-        std::string line(buffer);
-        if (line.find("bestmove ") != std::string::npos)
-        {
-            std::stringstream ss(line);
-            std::string tag;
-            ss >> tag >> bestMove;
-            break;
-        }
+        dup2(inPipe[0], STDIN_FILENO);
+        dup2(outPipe[1], STDOUT_FILENO);
+        close(inPipe[1]);
+        close(outPipe[0]);
+
+        char* argv[] = {(char*)"stockfish", NULL};
+        execvp("stockfish", argv);
+        exit(1);
     }
-    pclose(pipe);
-    return bestMove;
+
+    close(inPipe[0]);
+    close(outPipe[1]);
+
+    std::string input = "uci\nisready\nposition startpos";
+    if (!moves.empty()) input += " moves " + moves;
+    input += "\ngo movetime 1000\nquit\n";
+
+    write(inPipe[1], input.c_str(), input.length());
+    close(inPipe[1]);
+
+    char buffer[4096];
+    std::string output = "";
+    ssize_t bytesRead;
+    while ((bytesRead = read(outPipe[0], buffer, sizeof(buffer) - 1)) > 0)
+    {
+        buffer[bytesRead] = '\0';
+        output += buffer;
+        if (output.find("bestmove") != std::string::npos) break;
+    }
+    close(outPipe[0]);
+    waitpid(pid, NULL, 0);
+
+    size_t pos = output.find("bestmove ");
+    if (pos != std::string::npos)
+    {
+        std::stringstream ss(output.substr(pos + 9));
+        std::string move;
+        ss >> move;
+        return move;
+    }
+    return "";
 }
 
 void handleGame(std::string gameId)
@@ -111,9 +122,8 @@ void handleGame(std::string gameId)
             bool myTurn = (amIWhite && (moveCount % 2 == 0)) || (!amIWhite && (moveCount % 2 != 0));
             if (myTurn)
             {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 std::string move = getBestMove(allMoves);
-                if (!move.empty() && move != "(none)" && move.length() >= 4)
+                if (!move.empty() && move != "(none)")
                 {
                     sendMove(gameId, move);
                 }
@@ -150,7 +160,7 @@ void streamEvents()
 
 int main()
 {
-    std::cout << "[DEPLOY] MatriX_Core v9.2 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v11.0 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
     while (true)
     {
         streamEvents();
