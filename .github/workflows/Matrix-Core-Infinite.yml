@@ -21,17 +21,18 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl g++ wget jq
-          # Daha esnek bir filtre: Hem Linux olsun, hem x86-64 olsun, ama tar.gz OLMASIN (direkt binary)
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/official-stockfish/Stockfish/releases/latest | jq -r '.assets[] | select(.name | contains("ubuntu-x86-64") and (contains("tar.gz") | not)) | .browser_download_url' | head -n 1)
+          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/official-stockfish/Stockfish/releases/latest | jq -r '.assets[] | select(.name | contains("ubuntu-x86-64-v3")) | .browser_download_url' | head -n 1)
           
-          # Eğer hala boşsa (fallback), içinde 'linux' ve 'static' geçen ilk şeyi al
           if [ -z "$DOWNLOAD_URL" ] || [ "$DOWNLOAD_URL" == "null" ]; then
-            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/official-stockfish/Stockfish/releases/latest | jq -r '.assets[] | select(.name | contains("linux")) | .browser_download_url' | head -n 1)
+            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/official-stockfish/Stockfish/releases/latest | jq -r '.assets[] | select(.name | contains("ubuntu-x86-64")) | .browser_download_url' | head -n 1)
           fi
-          
+
           echo "Targeting URL: $DOWNLOAD_URL"
           wget -O stockfish "$DOWNLOAD_URL"
+          
           chmod +x stockfish
+          ls -la stockfish
+          ./stockfish uci | head -n 2
 
       - name: Compile Matrix-Core
         run: |
