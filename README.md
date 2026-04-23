@@ -5,7 +5,7 @@
 ![Engine](https://img.shields.io/badge/Engine-Stockfish%2017-blue?style=for-the-badge)
 ![Language](https://img.shields.io/badge/Language-C%2B%2B%2020-green?style=for-the-badge&logo=c%2B%2B)
 
-**MatriX_Core** is the flagship high-performance entity of the **SyntaX** project. Engineered in C++ for maximum execution speed, it is an ultra-low-latency chess automation system optimized for Lichess. By eliminating the overhead of interpreted languages, it operates as a **"Speed Demon"** through native POSIX process management and direct system integration.
+**MatriX_Core** is the flagship high-performance entity of the **MatriX** project. Engineered in C++ for maximum execution speed, it is an ultra-low-latency chess automation system optimized for Lichess. By eliminating the overhead of interpreted languages, it operates as a **"Speed Demon"** through native POSIX process management and direct system integration.
 
 ## 🚀 Key Features
 
