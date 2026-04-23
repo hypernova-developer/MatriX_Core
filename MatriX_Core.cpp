@@ -152,23 +152,29 @@ void streamEvents()
         std::string line(buffer);
         if (line.find("\"type\":\"challenge\"") != std::string::npos)
         {
-            size_t idPos = line.find("\"id\":\"") + 6;
-            std::string c_id = line.substr(idPos, line.find("\"", idPos) - idPos);
+            size_t idStart = line.find("\"id\":\"") + 6;
+            size_t idEnd = line.find("\"", idStart);
+            std::string c_id = line.substr(idStart, idEnd - idStart);
 
-            size_t challengerPos = line.find("\"challenger\":{\"id\":\"") + 20;
-            std::string challengerId = line.substr(challengerPos, line.find("\"", challengerPos) - challengerPos);
+            size_t chStart = line.find("\"challenger\":{");
+            if (chStart != std::string::npos)
+            {
+                size_t nameStart = line.find("\"id\":\"", chStart) + 6;
+                size_t nameEnd = line.find("\"", nameStart);
+                std::string challengerId = line.substr(nameStart, nameEnd - nameStart);
 
-            if (isUserAllowed(challengerId))
-            {
-                std::string acc = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
-                system((acc + " > /dev/null 2>&1").c_str());
-                std::thread(handleGame, c_id).detach();
-            }
-            else
-            {
-                std::string decline = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
-                system((decline + " > /dev/null 2>&1").c_str());
-                std::cout << "[SECURITY] Blocked challenge from: " << challengerId << std::endl << std::flush;
+                if (isUserAllowed(challengerId))
+                {
+                    std::string acc = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
+                    system((acc + " > /dev/null 2>&1").c_str());
+                    std::thread(handleGame, c_id).detach();
+                }
+                else
+                {
+                    std::string decline = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
+                    system((decline + " > /dev/null 2>&1").c_str());
+                    std::cout << "[SECURITY] Blocked challenge from: " << challengerId << std::endl << std::flush;
+                }
             }
         }
     }
@@ -178,7 +184,7 @@ void streamEvents()
 int main()
 {
     if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v12.1: Online. (WHITELIST ENABLED)" << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v12.2: Online. (WHITELIST ENABLED)" << std::endl << std::flush;
     while (true)
     {
         streamEvents();
