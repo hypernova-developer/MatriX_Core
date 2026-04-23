@@ -7,6 +7,7 @@
 #include <thread>
 #include <algorithm>
 #include <chrono>
+#include <fstream>
 
 const std::string TOKEN = std::getenv("LICHESS_TOKEN") ? std::getenv("LICHESS_TOKEN") : "";
 const std::vector<std::string> WHITELIST = {"muhammedeymengurbuz"}; 
@@ -22,16 +23,19 @@ bool isUserAllowed(std::string userId) {
 void sendMove(std::string gameId, std::string move) {
     std::string cmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\"";
     system((cmd + " > /dev/null 2>&1 &").c_str());
-    std::cout << "[STRIKE] Matrix sent: " << move << std::endl << std::flush;
+    std::cout << "[STRIKE] Move: " << move << std::endl << std::flush;
 }
 
 std::string getBestMove(std::string moves) {
-    std::string command = "echo \"uci\n";
-    command += "isready\n";
-    command += "position startpos moves " + moves + "\n";
-    command += "go movetime 300\n";
-    command += "quit\" | stockfish";
+    std::ofstream engineInput("engine_cmd.txt");
+    engineInput << "uci" << std::endl;
+    engineInput << "isready" << std::endl;
+    engineInput << "position startpos moves " << moves << std::endl;
+    engineInput << "go movetime 500" << std::endl;
+    engineInput << "quit" << std::endl;
+    engineInput.close();
 
+    std::string command = "stockfish < engine_cmd.txt 2>/dev/null";
     FILE* pipe = popen(command.c_str(), "r");
     if (!pipe) return "";
     
@@ -39,11 +43,11 @@ std::string getBestMove(std::string moves) {
     std::string result = "";
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         std::string line(buffer);
-        
         if (line.find("bestmove ") != std::string::npos) {
-            size_t pos = line.find("bestmove ");
-            std::stringstream ss(line.substr(pos + 9));
-            ss >> result;
+            std::stringstream ss(line);
+            std::string tag, move;
+            ss >> tag >> move;
+            result = move;
             break;
         }
     }
@@ -63,12 +67,10 @@ void handleGame(std::string gameId, bool amIWhite) {
     char buffer[16384];
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         std::string line(buffer);
-        if (line.empty() || line == "\n") continue;
-
-        size_t mPos = line.find("\"moves\":\"");
-        if (mPos != std::string::npos) {
-            size_t end = line.find("\"", mPos + 9);
-            std::string allMoves = line.substr(mPos + 9, end - (mPos + 9));
+        if (line.find("\"moves\":\"") != std::string::npos) {
+            size_t mStart = line.find("\"moves\":\"") + 9;
+            size_t mEnd = line.find("\"", mStart);
+            std::string allMoves = line.substr(mStart, mEnd - mStart);
             
             int moveCount = 0;
             std::stringstream ss(allMoves);
@@ -78,7 +80,6 @@ void handleGame(std::string gameId, bool amIWhite) {
             bool myTurn = (amIWhite && (moveCount % 2 == 0)) || (!amIWhite && (moveCount % 2 != 0));
 
             if (myTurn) {
-                std::cout << "[DECIDING] Analyzing moves sequence..." << std::endl << std::flush;
                 std::string move = getBestMove(allMoves);
                 if (!move.empty() && move != "(none)") {
                     sendMove(gameId, move);
@@ -89,7 +90,7 @@ void handleGame(std::string gameId, bool amIWhite) {
     }
     pclose(pipe);
     isInGame = false;
-    std::cout << "[SYSTEM] Target Terminated." << std::endl << std::flush;
+    std::cout << "[SYSTEM] Terminated." << std::endl << std::flush;
 }
 
 void streamEvents() {
@@ -101,21 +102,21 @@ void streamEvents() {
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
         std::string line(buffer);
         if (line.find("\"type\":\"challenge\"") != std::string::npos) {
-            size_t userPos = line.find("\"id\":\"", line.find("\"challenger\"")) + 6;
-            std::string challengerId = line.substr(userPos, line.find("\"", userPos) - userPos);
-            size_t c_id_pos = line.find("\"id\":\"") + 6;
-            std::string c_id = line.substr(c_id_pos, line.find("\"", c_id_pos) - c_id_pos);
+            size_t uPos = line.find("\"id\":\"", line.find("\"challenger\"")) + 6;
+            std::string challengerId = line.substr(uPos, line.find("\"", uPos) - uPos);
+            size_t cPos = line.find("\"id\":\"") + 6;
+            std::string c_id = line.substr(cPos, line.find("\"", cPos) - cPos);
             
             if (isUserAllowed(challengerId)) {
-                std::cout << "[AUTH] King Recognized. Opening Gates..." << std::endl << std::flush;
+                std::cout << "[AUTH] King: " << challengerId << ". Accepting..." << std::endl << std::flush;
                 std::string acceptCmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
                 system((acceptCmd + " > /dev/null 2>&1").c_str());
                 
                 std::this_thread::sleep_for(std::chrono::seconds(1));
                 std::thread(handleGame, c_id, false).detach(); 
             } else {
-                std::string declineCmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
-                system((declineCmd + " > /dev/null 2>&1").c_str());
+                std::string decCmd = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
+                system((decCmd + " > /dev/null 2>&1").c_str());
             }
         }
     }
@@ -123,7 +124,7 @@ void streamEvents() {
 }
 
 int main() {
-    std::cout << "[DEPLOY] MatriX_Core v8.4 EXECUTION DEMON Online." << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v8.5 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
     while (true) {
         streamEvents();
         std::this_thread::sleep_for(std::chrono::seconds(1));
