@@ -11,129 +11,152 @@
 #include <chrono>
 
 const std::string TOKEN = std::getenv("LICHESS_TOKEN") ? std::getenv("LICHESS_TOKEN") : "";
-const std::string MY_USERNAME = "Muhammedeymengurbuz";
-const std::vector<std::string> WHITELIST = { "Muhammedeymengurbuz", "muhammedeymengurbuz" };
 int currentMatchesCount = 0;
 
-bool isWhitelisted(std::string username)
+void logError(std::string context, int code)
 {
-    if (username.empty()) return false;
-    std::string lowerUser = username;
-    std::transform(lowerUser.begin(), lowerUser.end(), lowerUser.begin(), ::tolower);
-    
-    for (const auto& user : WHITELIST)
+    if (code != 0)
     {
-        std::string lowerWhite = user;
-        std::transform(lowerWhite.begin(), lowerWhite.end(), lowerWhite.begin(), ::tolower);
-        if (lowerWhite == lowerUser) return true;
+        std::cerr << "[!!! ERROR !!!] " << context << " failed with code: " << code << std::endl << std::flush;
     }
-    return false;
 }
 
 void sendMove(std::string gameId, std::string move)
 {
-    if (gameId.empty() || move.empty()) return;
-    std::string cmd = "curl -s -X POST \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\" -H \"Authorization: Bearer " + TOKEN + "\" > /dev/null";
-    system(cmd.c_str());
-    std::cout << "[MOVE] Matrix strike: " << move << std::endl;
+    std::string cmd = "curl -s -X POST \"https://lichess.org/api/bot/game/" + gameId + "/move/" + move + "\" -H \"Authorization: Bearer " + TOKEN + "\"";
+    int res = system(cmd.c_str());
+    if (res != 0) logError("Move Execution (" + move + ")", res);
+    else std::cout << "[MOVE] Strike successful: " << move << std::endl << std::flush;
 }
 
 std::string getBestMove(std::string moves)
 {
     std::string command = "(echo \"uci\"; echo \"isready\"; echo \"position startpos moves " + moves + "\"; echo \"go movetime 50\"; echo \"quit\") | stockfish 2>/dev/null";
-    std::array<char, 128> buffer;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), pclose);
-    if (!pipe) return "";
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) { logError("Stockfish Pipe", -1); return ""; }
+    
+    char buffer[128];
+    std::string result = "";
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
     {
-        std::string line(buffer.data());
+        std::string line(buffer);
         if (line.find("bestmove ") != std::string::npos)
         {
-            std::string foundMove = line.substr(9, 4);
-            if (foundMove != "(non") return foundMove;
+            result = line.substr(9, 4);
+            break;
         }
     }
-    return "";
+    pclose(pipe);
+    return result;
 }
 
 void handleGame(std::string gameId, bool amIWhite)
 {
-    std::string cmd = "curl -s -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/stream/" + gameId + "\"";
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) { currentMatchesCount--; return; }
+    std::cout << "[GAME-START] ID: " << gameId << " | Color: " << (amIWhite ? "White" : "Black") << std::endl << std::flush;
+    std::string cmd = "curl -s -N -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/bot/game/stream/" + gameId + "\"";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) { logError("Game Stream Pipe", -1); currentMatchesCount--; return; }
 
     char buffer[16384];
-    while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr)
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
     {
         std::string line(buffer);
-        if (line.find("\"status\":\"") != std::string::npos && line.find("\"status\":\"started\"") == std::string::npos) break;
+        if (line.length() < 5) continue;
 
-        size_t movesPos = line.find("\"moves\":\"");
-        if (movesPos != std::string::npos)
+        if (line.find("\"moves\"") != std::string::npos)
         {
-            size_t start = movesPos + 9;
-            std::string allMoves = line.substr(start, line.find("\"", start) - start);
-            size_t spaceCount = std::count(allMoves.begin(), allMoves.end(), ' ');
-            bool isMyTurn = (allMoves.empty() && amIWhite) || (!allMoves.empty() && ((spaceCount + 1) % 2 == 0) == amIWhite);
-            if (isMyTurn)
+            size_t pos = line.find("\"moves\":\"") + 9;
+            std::string allMoves = line.substr(pos, line.find("\"", pos) - pos);
+            
+            size_t spaces = std::count(allMoves.begin(), allMoves.end(), ' ');
+            bool myTurn = (allMoves.empty() && amIWhite) || (!allMoves.empty() && ((spaces + 1) % 2 == 0) == amIWhite);
+
+            if (myTurn)
             {
-                std::string nextMove = getBestMove(allMoves);
-                if (!nextMove.empty()) sendMove(gameId, nextMove);
+                std::string move = getBestMove(allMoves);
+                if (!move.empty() && move.length() >= 4) sendMove(gameId, move);
             }
         }
+        
+        if (line.find("\"status\"") != std::string::npos && line.find("\"started\"") == std::string::npos)
+        {
+            std::cout << "[GAME-END] Status detected in stream." << std::endl << std::flush;
+            break;
+        }
     }
+    pclose(pipe);
     currentMatchesCount--;
-    std::cout << "[SYSTEM] Game slot released." << std::endl;
-}
-
-void processChallenge(std::string challengerId, std::string challengeId)
-{
-    std::string action = (isWhitelisted(challengerId) && currentMatchesCount < 1) ? "accept" : "decline";
-    std::string cmd = "curl -s -X POST \"https://lichess.org/api/challenge/" + challengeId + "/" + action + "\" -H \"Authorization: Bearer " + TOKEN + "\" > /dev/null";
-    
-    int res = system(cmd.c_str());
-    std::cout << "[SYSTEM] " << action << "ed challenge from: " << challengerId << " (Status: " << res << ")" << std::endl;
 }
 
 void streamEvents()
 {
-    std::string cmd = "curl -s -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/stream/event\"";
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd.c_str(), "r"), pclose);
-    if (!pipe) return;
+    std::cout << "[DEBUG] Opening Event Stream..." << std::endl << std::flush;
+    std::string cmd = "curl -s -N -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/stream/event\"";
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) { logError("Event Stream Pipe", -1); return; }
 
-    char buffer[4096];
-    while (fgets(buffer, sizeof(buffer), pipe.get()) != nullptr)
+    char buffer[8192];
+    while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
     {
         std::string line(buffer);
+        if (line.length() < 2) continue;
+
+        std::cout << "[INCOMING] " << line << std::endl << std::flush;
+
         if (line.find("\"type\":\"challenge\"") != std::string::npos)
         {
-            size_t idPos = line.find("\"id\":\"") + 6;
-            std::string c_id = line.substr(idPos, line.find("\"", idPos) - idPos);
-            size_t challengerPos = line.find("\"challenger\"");
-            size_t userPos = line.find("\"id\":\"", challengerPos) + 6;
-            std::string c_user = line.substr(userPos, line.find("\"", userPos) - userPos);
+            size_t idStart = line.find("\"id\":\"") + 6;
+            std::string c_id = line.substr(idStart, line.find("\"", idStart) - idStart);
             
-            processChallenge(c_user, c_id);
+            std::string lowerLine = line;
+            std::transform(lowerLine.begin(), lowerLine.end(), lowerLine.begin(), ::tolower);
+            
+            if (lowerLine.find("muhammedeymengurbuz") != std::string::npos)
+            {
+                std::cout << "[AUTH] Whitelisted user recognized. Sending Accept..." << std::endl << std::flush;
+                std::string acceptCmd = "curl -s -X POST \"https://lichess.org/api/challenge/" + c_id + "/accept\" -H \"Authorization: Bearer " + TOKEN + "\"";
+                int res = system(acceptCmd.c_str());
+                if (res != 0) logError("Challenge Acceptance", res);
+            }
+            else
+            {
+                std::cout << "[AUTH] Stranger detected. Declining..." << std::endl << std::flush;
+                std::string declineCmd = "curl -s -X POST \"https://lichess.org/api/challenge/" + c_id + "/decline\" -H \"Authorization: Bearer " + TOKEN + "\"";
+                system(declineCmd.c_str());
+            }
         }
-        else if (line.find("\"type\":\"gameStart\"") != std::string::npos && currentMatchesCount < 1)
+        else if (line.find("\"type\":\"gameStart\"") != std::string::npos)
         {
-            size_t gameIdPos = line.find("\"id\":\"", line.find("\"game\"")) + 6;
-            std::string g_id = line.substr(gameIdPos, line.find("\"", gameIdPos) - gameIdPos);
-            bool amIWhite = (line.find("\"color\":\"white\"") != std::string::npos);
-            currentMatchesCount++;
-            std::thread(handleGame, g_id, amIWhite).detach();
+            size_t gPos = line.find("\"id\":\"", line.find("\"game\"")) + 6;
+            std::string g_id = line.substr(gPos, line.find("\"", gPos) - gPos);
+            bool white = (line.find("\"color\":\"white\"") != std::string::npos);
+            
+            if (currentMatchesCount < 1)
+            {
+                currentMatchesCount++;
+                std::thread(handleGame, g_id, white).detach();
+            }
         }
     }
+    int closeRes = pclose(pipe);
+    logError("Event Stream Closed", closeRes);
 }
 
 int main()
 {
-    if (TOKEN.empty()) { std::cerr << "[FATAL] TOKEN NULL!" << std::endl; return 1; }
-    std::cout << "[DEPLOY] MatriX_Core v7.2 BOT-READY Online." << std::endl;
+    if (TOKEN.empty()) 
+    {
+        std::cerr << "[FATAL] LICHESS_TOKEN IS EMPTY! Check Secrets." << std::endl << std::flush;
+        return 1;
+    }
+
+    std::cout << "[DEPLOY] MatriX_Core v7.5 Black-Box Active." << std::endl << std::flush;
+    
     while (true)
     {
-        try { streamEvents(); }
-        catch (...) { std::this_thread::sleep_for(std::chrono::seconds(5)); }
+        streamEvents();
+        std::cout << "[RETRY] Connection lost. Re-establishing in 5s..." << std::endl << std::flush;
+        std::this_thread::sleep_for(std::chrono::seconds(5));
     }
     return 0;
 }
