@@ -17,13 +17,20 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Setup Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y stockfish curl g++
+          sudo apt-get install -y curl g++ wget unzip
+          # Stockfish'in en stabil Linux binary'sini indiriyoruz
+          wget https://github.com/official-stockfish/Stockfish/releases/latest/download/stockfish-ubuntu-x86-64-modern.tar.gz
+          tar -xvf stockfish-ubuntu-x86-64-modern.tar.gz
+          # Binary'yi botun çalışacağı yere taşı ve ismini basitleştir
+          mv stockfish/stockfish-ubuntu-x86-64-modern ./stockfish
+          chmod +x ./stockfish
 
       - name: Compile Matrix-Core
         run: |
+          # STOCKFISH_PATH'in ./stockfish olduğundan emin ol
           g++ -O3 MatriX_Core.cpp -o MatriX_Core -pthread
 
       - name: Execute Matrix-Core
@@ -31,5 +38,5 @@ jobs:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
         run: |
           chmod +x MatriX_Core
-          # -E bayrağı env değişkenlerini sudo'ya taşır
-          sudo -E ./MatriX_Core
+          # sudo kullanmıyoruz, yerel klasördeki binary'yi kullansın
+          ./MatriX_Core
