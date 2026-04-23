@@ -56,7 +56,7 @@ std::string getBestMove(std::string moves)
     else
         input << "position startpos moves " << moves << "\n";
     
-    input << "go depth 15\n";
+    input << "go movetime 50\n";
 
     std::string s = input.str();
     write(inPipe[1], s.c_str(), s.length());
@@ -65,7 +65,7 @@ std::string getBestMove(std::string moves)
     std::string output = "";
     auto start = std::chrono::steady_clock::now();
 
-    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(7))
+    while (std::chrono::steady_clock::now() - start < std::chrono::seconds(2))
     {
         ssize_t n = read(outPipe[0], buffer, sizeof(buffer) - 1);
         if (n <= 0) break;
@@ -178,7 +178,7 @@ void streamEvents()
 int main()
 {
     if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v13.2: Accuracy Priority" << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v7.17.0 Unnatural Disaster: EXECUTION DEMON" << std::endl << std::flush;
     while (true)
     {
         streamEvents();
