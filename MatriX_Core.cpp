@@ -35,17 +35,24 @@ std::string getBestMove(std::string moves)
     std::ofstream engineInput("input.txt");
     engineInput << "uci" << std::endl;
     engineInput << "isready" << std::endl;
-    if (moves.empty()) engineInput << "position startpos" << std::endl;
-    else engineInput << "position startpos moves " << moves << std::endl;
+    
+    if (moves.empty()) 
+    {
+        engineInput << "position startpos" << std::endl;
+    }
+    else 
+    {
+        engineInput << "position startpos moves " << moves << std::endl;
+    }
+    
     engineInput << "go movetime 1000" << std::endl;
     engineInput << "quit" << std::endl;
     engineInput.close();
 
-    std::string cmd = "stockfish < input.txt 2>/dev/null";
-    FILE* pipe = popen(cmd.c_str(), "r");
+    FILE* pipe = popen("stockfish < input.txt 2>/dev/null", "r");
     if (!pipe) return "";
 
-    char buffer[1024];
+    char buffer[2048];
     std::string bestMove = "";
     while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
     {
@@ -82,10 +89,9 @@ void handleGame(std::string gameId)
             size_t wPos = line.find("\"white\":{\"id\":\"") + 15;
             std::string whiteId = line.substr(wPos, line.find("\"", wPos) - wPos);
             std::transform(whiteId.begin(), whiteId.end(), whiteId.begin(), ::tolower);
-            
             amIWhite = (whiteId.find("bot") != std::string::npos || whiteId.find("matrix") != std::string::npos);
             colorFound = true;
-            std::cout << "[INFO] Matrix is " << (amIWhite ? "WHITE" : "BLACK") << std::endl << std::flush;
+            std::cout << "[INFO] Matrix Identity: " << (amIWhite ? "WHITE" : "BLACK") << std::endl << std::flush;
         }
 
         if (line.find("\"moves\":\"") != std::string::npos)
@@ -105,8 +111,9 @@ void handleGame(std::string gameId)
             bool myTurn = (amIWhite && (moveCount % 2 == 0)) || (!amIWhite && (moveCount % 2 != 0));
             if (myTurn)
             {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 std::string move = getBestMove(allMoves);
-                if (!move.empty() && move != "(none)")
+                if (!move.empty() && move != "(none)" && move.length() >= 4)
                 {
                     sendMove(gameId, move);
                 }
@@ -143,7 +150,7 @@ void streamEvents()
 
 int main()
 {
-    std::cout << "[DEPLOY] MatriX_Core v9.1 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v9.2 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
     while (true)
     {
         streamEvents();
