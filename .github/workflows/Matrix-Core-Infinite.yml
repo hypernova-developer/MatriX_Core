@@ -20,11 +20,10 @@ jobs:
       - name: Setup Environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y curl g++ wget
-          # Arşivle uğraşmadan direkt binary dosyasını çekiyoruz
-          wget https://github.com/official-stockfish/Stockfish/releases/latest/download/stockfish-ubuntu-x86-64-v3
-          # Dosya ismini botun beklediği 'stockfish' ismine çeviriyoruz
-          mv stockfish-ubuntu-x86-64-v3 stockfish
+          sudo apt-get install -y curl g++ wget jq
+          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/official-stockfish/Stockfish/releases/latest | jq -r '.assets[] | select(.name | contains("ubuntu-x86-64-v3")) | .browser_download_url' | head -n 1)
+          echo "Found URL: $DOWNLOAD_URL"
+          wget -O stockfish "$DOWNLOAD_URL"
           chmod +x stockfish
 
       - name: Compile Matrix-Core
