@@ -184,7 +184,7 @@ void streamEvents()
 int main()
 {
     if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v12.2: Online. (WHITELIST ENABLED)" << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v12.2 Unnatural Disaster: EXECUTION DEMON Online. " << std::endl << std::flush;
     while (true)
     {
         streamEvents();
