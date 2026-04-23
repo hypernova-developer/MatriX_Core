@@ -20,7 +20,7 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y stockfish curl g++ libstdc++6 libgcc-s1
+          sudo apt-get install -y stockfish curl g++
 
       - name: Compile Matrix-Core
         run: |
@@ -30,5 +30,6 @@ jobs:
         env:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
         run: |
-          sudo chmod +x MatriX_Core
-          sudo ./MatriX_Core
+          chmod +x MatriX_Core
+          # -E bayrağı env değişkenlerini sudo'ya taşır
+          sudo -E ./MatriX_Core
