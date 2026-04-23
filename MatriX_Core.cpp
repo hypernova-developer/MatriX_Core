@@ -7,9 +7,11 @@
 #include <algorithm>
 #include <chrono>
 #include <thread>
+#include <fstream>
 
 const std::string TOKEN = std::getenv("LICHESS_TOKEN") ? std::getenv("LICHESS_TOKEN") : "";
 const std::vector<std::string> WHITELIST = {"muhammedeymengurbuz"};
+const std::string STOCKFISH_PATH = "/usr/games/stockfish";
 
 bool isUserAllowed(std::string userId)
 {
@@ -42,19 +44,24 @@ std::string getBestMove(std::string moves)
         close(inPipe[1]);
         close(outPipe[0]);
 
-        char* argv[] = {(char*)"stockfish", NULL};
-        execvp("stockfish", argv);
+        char* argv[] = {(char*)STOCKFISH_PATH.c_str(), NULL};
+        execv(STOCKFISH_PATH.c_str(), argv);
         exit(1);
     }
 
     close(inPipe[0]);
     close(outPipe[1]);
 
-    std::string input = "uci\nisready\nposition startpos";
-    if (!moves.empty()) input += " moves " + moves;
-    input += "\ngo movetime 1000\nquit\n";
+    std::stringstream input;
+    input << "uci\n";
+    input << "isready\n";
+    if (moves.empty()) input << "position startpos\n";
+    else input << "position startpos moves " << moves << "\n";
+    input << "go movetime 1000\n";
+    input << "quit\n";
 
-    write(inPipe[1], input.c_str(), input.length());
+    std::string fullInput = input.str();
+    write(inPipe[1], fullInput.c_str(), fullInput.length());
     close(inPipe[1]);
 
     char buffer[4096];
@@ -160,7 +167,7 @@ void streamEvents()
 
 int main()
 {
-    std::cout << "[DEPLOY] MatriX_Core v11.0 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v11.1 Unnatural Disaster: EXECUTION DEMON Online." << std::endl << std::flush;
     while (true)
     {
         streamEvents();
