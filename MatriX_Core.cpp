@@ -11,6 +11,20 @@
 const char* rawToken = std::getenv("LICHESS_TOKEN");
 const std::string TOKEN = rawToken ? rawToken : "";
 const std::string STOCKFISH_PATH = "./stockfish";
+const std::vector<std::string> WHITELIST = { "muhammedeymengurbuz" };
+
+bool isUserAllowed(std::string userId)
+{
+    std::transform(userId.begin(), userId.end(), userId.begin(), ::tolower);
+    for (const auto& allowed : WHITELIST)
+    {
+        if (userId == allowed)
+        {
+            return true;
+        }
+    }
+    return false;
+}
 
 void sendMove(std::string gameId, std::string move)
 {
@@ -32,7 +46,7 @@ std::string getBestMove(std::string moves)
         close(inPipe[1]);
         close(outPipe[0]);
 
-        char* const argv[] = {(char*)"stockfish", NULL};
+        char* const argv[] = { (char*)"stockfish", NULL };
         execv(STOCKFISH_PATH.c_str(), argv);
         _exit(1);
     }
@@ -42,11 +56,11 @@ std::string getBestMove(std::string moves)
 
     std::stringstream input;
     input << "uci\nisready\n";
-    if (moves.empty()) 
+    if (moves.empty())
     {
         input << "position startpos\n";
     }
-    else 
+    else
     {
         input << "position startpos moves " << moves << "\n";
     }
@@ -60,7 +74,7 @@ std::string getBestMove(std::string moves)
     std::string output = "";
     ssize_t n;
     auto start = std::chrono::steady_clock::now();
-    
+
     while (std::chrono::steady_clock::now() - start < std::chrono::seconds(5))
     {
         n = read(outPipe[0], buffer, sizeof(buffer) - 1);
@@ -138,11 +152,24 @@ void streamEvents()
         std::string line(buffer);
         if (line.find("\"type\":\"challenge\"") != std::string::npos)
         {
-            size_t pos = line.find("\"id\":\"") + 6;
-            std::string c_id = line.substr(pos, line.find("\"", pos) - pos);
-            std::string acc = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
-            system((acc + " > /dev/null 2>&1").c_str());
-            std::thread(handleGame, c_id).detach();
+            size_t idPos = line.find("\"id\":\"") + 6;
+            std::string c_id = line.substr(idPos, line.find("\"", idPos) - idPos);
+
+            size_t challengerPos = line.find("\"challenger\":{\"id\":\"") + 20;
+            std::string challengerId = line.substr(challengerPos, line.find("\"", challengerPos) - challengerPos);
+
+            if (isUserAllowed(challengerId))
+            {
+                std::string acc = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/accept\"";
+                system((acc + " > /dev/null 2>&1").c_str());
+                std::thread(handleGame, c_id).detach();
+            }
+            else
+            {
+                std::string decline = "curl -s -X POST -H \"Authorization: Bearer " + TOKEN + "\" \"https://lichess.org/api/challenge/" + c_id + "/decline\"";
+                system((decline + " > /dev/null 2>&1").c_str());
+                std::cout << "[SECURITY] Blocked challenge from: " << challengerId << std::endl << std::flush;
+            }
         }
     }
     pclose(stream);
@@ -151,7 +178,7 @@ void streamEvents()
 int main()
 {
     if (TOKEN.empty()) return 1;
-    std::cout << "[DEPLOY] MatriX_Core v12.1: Online." << std::endl << std::flush;
+    std::cout << "[DEPLOY] MatriX_Core v12.1: Online. (WHITELIST ENABLED)" << std::endl << std::flush;
     while (true)
     {
         streamEvents();
