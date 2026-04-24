@@ -8,7 +8,6 @@
 
 std::string GLOBAL_TOKEN;
 
-// Stockfish ile en iyi hamleyi bulma
 std::string get_best_move(std::string moves) {
     std::ofstream engine_input("engine_in.txt");
     engine_input << "uci\nisready\nposition startpos moves " << moves << "\ngo movetime 1500\nquit\n";
@@ -29,7 +28,6 @@ std::string get_best_move(std::string moves) {
     return result;
 }
 
-// Oyunun içine girip hamleleri takip eden fonksiyon
 void handle_game(std::string game_id) {
     std::cout << "[GAME] Infiltrating game: " << game_id << std::endl;
     std::string game_cmd = "curl -s -N -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/bot/game/stream/" + game_id;
@@ -40,7 +38,6 @@ void handle_game(std::string game_id) {
     while (fgets(buffer, sizeof(buffer), game_pipe) != nullptr) {
         std::string line(buffer);
         if (line.find("\"type\":\"gameState\"") != std::string::npos || line.find("\"type\":\"gameFull\"") != std::string::npos) {
-            // Hamleleri ayıkla
             size_t m_pos = line.find("\"moves\":\"");
             if (m_pos != std::string::npos) {
                 m_pos += 9;
@@ -74,20 +71,17 @@ int main() {
         while (fgets(buffer, sizeof(buffer), event_pipe) != nullptr) {
             std::string event(buffer);
             
-            // Meydan okuma kabulü
             if (event.find("\"type\":\"challenge\"") != std::string::npos) {
                 size_t id_p = event.find("\"id\":\"") + 6;
                 std::string c_id = event.substr(id_p, 8);
                 std::system(("curl -s -X POST -H \"Authorization: Bearer " + GLOBAL_TOKEN + "\" https://lichess.org/api/challenge/" + c_id + "/accept").c_str());
                 std::cout << "[EVENT] Accepted: " << c_id << std::endl;
             }
-            // Oyun başladığında içeri sızma
             else if (event.find("\"type\":\"gameStart\"") != std::string::npos) {
                 size_t g_p = event.find("\"id\":\"") + 6;
                 if (g_p < 6) g_p = event.find("\"gameId\":\"") + 10;
                 std::string g_id = event.substr(g_p, 8);
                 
-                // Oyunu takip etmeye başla
                 handle_game(g_id);
             }
         }
