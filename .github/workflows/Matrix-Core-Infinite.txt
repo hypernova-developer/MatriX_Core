@@ -21,16 +21,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y curl g++ wget stockfish
+          # Stockfish yolunu doğrula ve sistem yetkilerini ayarla
           which stockfish
-          stockfish uci | head -n 2
+          sudo chmod +x /usr/games/stockfish
 
-      - name: Compile Matrix-Core
+      - name: Compile Matrix-Core (Speed Optimized)
         run: |
-          g++ -O3 MatriX_Core.cpp -o MatriX_Core -pthread
+          # v7.18.0 için agresif optimizasyon bayrakları eklendi
+          g++ -Ofast -march=native -flto MatriX_Core.cpp -o MatriX_Core -pthread
 
       - name: Execute Matrix-Core
         env:
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
         run: |
+          # Çıkışın anlık görünmesi için buffer'ı devre dışı bırakıyoruz
           chmod +x MatriX_Core
-          ./MatriX_Core
+          stdbuf -oL -eL ./MatriX_Core
