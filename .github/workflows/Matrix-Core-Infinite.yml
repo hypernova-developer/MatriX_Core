@@ -1,39 +1,71 @@
 name: Matrix-Core Infinite Runner
 
+
+
 on:
+
   workflow_dispatch: 
+
   schedule:
+
     - cron: '0 */5 * * *'
 
+
+
 concurrency:
+
   group: matrix-core-group
+
   cancel-in-progress: false
 
+
+
 jobs:
+
   run-bot:
+
     runs-on: ubuntu-latest
+
     timeout-minutes: 360
+
     steps:
+
       - name: Checkout Code
+
         uses: actions/checkout@v4
 
-      - name: Setup Environment
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl g++ wget stockfish
-          # Stockfish yolunu doğrula ve sistem yetkilerini ayarla
-          which stockfish
-          sudo chmod +x /usr/games/stockfish
 
-      - name: Compile Matrix-Core (Speed Optimized)
+
+      - name: Setup Environment
+
         run: |
-          # v7.18.0 için agresif optimizasyon bayrakları eklendi
-          g++ -Ofast -march=native -flto MatriX_Core.cpp -o MatriX_Core -pthread
+
+          sudo apt-get update
+
+          sudo apt-get install -y curl g++ wget stockfish
+
+          which stockfish
+
+          stockfish uci | head -n 2
+
+
+
+      - name: Compile Matrix-Core
+
+        run: |
+
+          g++ -Ofast -march=native MatriX_Core.cpp -o MatriX_Core -pthread
+
+
 
       - name: Execute Matrix-Core
+
         env:
+
           LICHESS_TOKEN: ${{ secrets.LICHESS_TOKEN }}
+
         run: |
-          # Çıkışın anlık görünmesi için buffer'ı devre dışı bırakıyoruz
+
           chmod +x MatriX_Core
-          stdbuf -oL -eL ./MatriX_Core
+
+          ./MatriX_Core
