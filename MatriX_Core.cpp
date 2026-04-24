@@ -13,7 +13,7 @@ const char* rawToken = std::getenv("LICHESS_TOKEN");
 const std::string TOKEN = rawToken ? rawToken : "";
 
 const std::vector<std::string> BLACKLIST = { 
-    "scheunentor17", "socratesbot254", "petersbot", 
+    "scheunentor17", "socratesbot254", 
     "pzchessbot", "krausevich", "pat9471" 
 };
 
